@@ -1,4 +1,4 @@
-## PyVNA
+## PyOpenVNA
 
 This repository contains both the Akela VNA DLL API Python wrapper and a 
 simple demo program that showcases the ability for a single computer to acquire
