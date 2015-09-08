@@ -13,15 +13,51 @@
 import ctypes as ct
 import os.path
 import platform
-if "Linux" in platform.system():
-	dll_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "libvna.so")
-	dll = ct.CDLL(dll_path)
-elif "Windows" in platform.system():
-	dll_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vnadll.dll")
-	print("DLL Path: ", dll_path)
-	dll = ct.CDLL(dll_path)
-else:
-	raise RuntimeError("Unknown platform: '%s'" % platform.system())
+
+def get_search_paths():
+	''' Build a list of search paths where we should look for the
+	VNA DLL.
+
+	'''
+	locations = []
+	loc = os.path.dirname(os.path.abspath(__file__))
+	up = os.path.abspath(os.path.join(loc, "../"))
+	locations.append(loc)
+	locations.append(up)
+
+	split_on = {"Linux" : ":", "Windows" : ";"}
+	split = os.environ['PATH'].split(split_on[platform.system()])
+
+	# Validate and canonize the various paths
+	split = [os.path.abspath(item) for item in split if os.path.exists(item)]
+
+	return locations+split
+
+
+def find_dll():
+	''' Search both the local working directory, and the
+	system environment (`PATH`) for the DLL/SO.
+	'''
+
+	dll_lut = {"Linux" : "libvna.so", "Windows" : "vnadll.dll"}
+
+	plat = platform.system()
+
+	if plat in dll_lut:
+		dll_name = dll_lut[plat]
+	else:
+		raise RuntimeError("Unknown platform: '%s'" % platform.system())
+
+	locations = get_search_paths()
+	print("Locations:")
+	print(locations)
+	for location in locations:
+		fq_dll_path = os.path.join(location, dll_name)
+		if os.path.exists(fq_dll_path):
+			return fq_dll_path
+	raise ValueError("Could not find DLL/SO! Searched paths: '%s'" % locations)
+
+dll = ct.CDLL(find_dll())
 
 import time
 import numpy as np
@@ -29,20 +65,18 @@ import numpy as np
 from . import vnaexceptions
 
 
-## \addtogroup Python-RAW-API
+## \addtogroup Python-Basic-API
 #
-#  \section raw-api-brief Low-Level VNA API Interface
+#  \section base-api-brief Low-Level VNA API Interface
 #
 # @authors Abhejit Rajagopal <abhejit@ece.ucsb.edu>, Connor Wolf <cwolf@akelainc.com>
 #
-#  This is the "RAW" API wrapper for the AKELA VNA
-#  interface. It's basically a paper-thin layer over the underlying C API.
+#  This is the "basic" API wrapper for the AKELA VNA
+#  interface. It's basically a thin layer over the underlying C API, doing
+#  only basic type conversion of some of the more involved data-structures.
 #
 #  Functionally, all calls here act almost identically to how the corresponding
 #  functions in the \ref C-API behave.
-#
-#  This means that there is *still* a fair amount of manual-management of resources,
-#  and odd pass-by-reference behaviour.
 #
 #  If you want a cleaner, more pythonic interface, please use the \ref Python-OOP-API
 #  class, which tries to hide the underlying complexity as much as possible.
@@ -127,6 +161,14 @@ def handleReturnCode(code, message = ""):
 	''' Given a VNA-DLL return code, raise the corresponding
 	python exception if the return-code is not ERR_OK.
 
+
+	Raises:
+
+	One of the child-classes of \ref VNA_Exception as dictated
+	by the value of `code` (if `code` corresponds to an exception).
+
+	Otherwise, it simply returns with no exception thrown.
+
 	Args:
 		code - The return code from a DLL-call.
 		message - Optional, description added to raised exception.
@@ -134,9 +176,8 @@ def handleReturnCode(code, message = ""):
 	Returns:
 		Nothing.
 
-	Raises:
-		One of the child-classes of \ref VNA_Exception as dictated
-		by the value of `code`.
+	---
+
 
 	'''
 
@@ -718,6 +759,11 @@ def versionString():
 
 
 class RAW_VNA(object):
+	''' Minimal wrapper for the VNA Dll.
+
+	Does type-conversion, return-code -> exception translation, and not much else.
+
+	'''
 
 	def __init__(self):
 		''' Initialized a handle to the VNA by creating a new Task object.

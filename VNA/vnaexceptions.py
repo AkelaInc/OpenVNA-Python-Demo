@@ -14,11 +14,11 @@
 ##
 #  \addtogroup Python-Exceptions
 #
-#  \section py-vna-exceptions Exceptions thrown by RAW_VNA
+#  \section py-vna-exceptions Exceptions thrown by VNA::vnalibrary::RAW_VNA
 #
 #  @authors Connor Wolf <cwolf@akelainc.com>
 #
-#  These are the exceptions that the \ref RAW_VNA() class
+#  These are the exceptions that the \ref VNA::vnalibrary::RAW_VNA class
 #  may throw.
 #
 #  Each exception corresponds to the eponymous C error return code,

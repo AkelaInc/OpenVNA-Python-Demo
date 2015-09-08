@@ -17,6 +17,16 @@ import logging
 
 ##
 #  \addtogroup Python-OOP-API
+#
+#  \section oop-api-brief Higher-Level VNA API Interface
+#
+# @authors Abhejit Rajagopal <abhejit@ece.ucsb.edu>, Connor Wolf <cwolf@akelainc.com>
+#
+#  This is the "OOP" API wrapper for the AKELA VNA
+#  interface. It seeks to be a more pythonic wrapper for the underlying VNA interface.
+#
+#
+#
 #  @{
 #
 
@@ -24,23 +34,22 @@ class VNA(vna.RAW_VNA):
 	''' Higher-level object-oriented library for interfacing with one or
 		more Akela VNAs.
 
-
 		This class serves as a wrapper for vnalibrary.py, which directly wraps
-		the C++ code in vnadll. Technically, everything here can be implemented
-		using only vnalibrary.py. Nevertheless, these routines are valuable
-		as they abstract away the low-level details of dealing with the C++.
+		the C++ code in vnadll. Functionally, everything here can be implemented
+		using only vnalibrary.py.
 
-		Common usage:	see testVNA.py
-			import VNA
-			vna = VNA.VNA(DEVICE_IP, DEVICE_IPPort)	#create VNA object
-			[...] = vna.set_config(...)				#configure
-			[...] = vna.setup_start()				#enable aquisition
-			[...] = vna.measure_uncal(...)			#measure paths
+		Nevertheless, these routines are valuable as they abstract away the
+		lower-level details of dealing with the hardware.
+
+		Note that this inherits from \ref VNA::vnalibrary::RAW_VNA, so you can call RAW_VNA
+		methods on it directly, without needing to manage two VNA instances.
+
 	'''
 
 
-	def __init__(self, DEVICE_IP, DEVICE_IPPort, vna_no=None, loglevel=logging.INFO):
-		''' Routine when connecting to an Akela VNA
+	def __init__(self, device_ip, device_ip_port, vna_no=None, loglevel=logging.INFO):
+		''' Connect and initialize a remote VNA.
+
 			Sets up logging, creates a task instance to control the VNA,
 			establishes connection with VNA on specified IP:port,
 			initializes VNA  and downloads hw details,
@@ -48,8 +57,8 @@ class VNA(vna.RAW_VNA):
 			interface at the DEBUG level.
 
 			Args:
-				DEVICE_IP		-- (str) IP address of VNA hardware
-				DEVICE_IPPort 	-- (int) IP port-number for connection
+				device_ip       -- (str) IP address of VNA hardware
+				device_ip_port  -- (int) IP port-number for connection. Typically 1024+
 				vna_no          -- (int/str) Number/String inserted into logger path
 				                         for the relevant VNA.
 				                         The resultant logging path will be: `Main.VNA-API-%%s`, where
@@ -70,26 +79,26 @@ class VNA(vna.RAW_VNA):
 		#! @cond
 		# (cond prevents doxygen from exposing a bunch of internal members)
 
-		self.ip = DEVICE_IP
+		self.ip = device_ip
 
 		# setup logging
 		if vna_no:
 			self.log = logging.getLogger("Main.VNA-API-%s" % vna_no)
 		else:
-			self.log = logging.getLogger("Main.VNA-API-%s" % DEVICE_IP.replace(".", "-"))
+			self.log = logging.getLogger("Main.VNA-API-%s" % device_ip.replace(".", "-"))
 
 		self.log.setLevel(loglevel)
 
 
 		# Set IP and Port
 
-		self.setIPAddress(DEVICE_IP)
+		self.setIPAddress(device_ip)
 		ip_check1 = self.getIPAddress()
-		self.log.debug('IP:		set-%s	returned-%s', DEVICE_IP, ip_check1)
+		self.log.debug('IP:		set-%s	returned-%s', device_ip, ip_check1)
 
-		self.setIPPort(DEVICE_IPPort)
+		self.setIPPort(device_ip_port)
 		ipport_check1 = self.getIPPort()
-		self.log.debug('Port:	set-%s		returned-%s', DEVICE_IPPort, ipport_check1)
+		self.log.debug('Port:	set-%s		returned-%s', device_ip_port, ipport_check1)
 
 		# Open and test connection to VNA
 		self.log.debug('Initializing... (downloads details from device, ETC: ~30secs)')
