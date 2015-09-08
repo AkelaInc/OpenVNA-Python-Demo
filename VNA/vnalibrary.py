@@ -13,6 +13,7 @@
 import ctypes as ct
 import os.path
 import platform
+import sys
 
 def get_search_paths():
 	''' Build a list of search paths where we should look for the
@@ -27,6 +28,10 @@ def get_search_paths():
 
 	split_on = {"Linux" : ":", "Windows" : ";"}
 	split = os.environ['PATH'].split(split_on[platform.system()])
+
+	if getattr(sys, 'frozen', False):
+		# we are running in a |PyInstaller| bundle
+		locations.append(sys._MEIPASS)
 
 	# Validate and canonize the various paths
 	split = [os.path.abspath(item) for item in split if os.path.exists(item)]
@@ -49,8 +54,7 @@ def find_dll():
 		raise RuntimeError("Unknown platform: '%s'" % platform.system())
 
 	locations = get_search_paths()
-	print("Locations:")
-	print(locations)
+
 	for location in locations:
 		fq_dll_path = os.path.join(location, dll_name)
 		if os.path.exists(fq_dll_path):
@@ -851,7 +855,7 @@ class RAW_VNA(object):
 		\exception ERR_MISSING_ATTEN if the attenuation has not yet been specified
 		\exception ERR_MISSING_FREQS if the frequencies have not yet been specified
 		\exception ERR_PROG_OVERFLOW if the size of the program is too large for the hardware's memory
-			    (this can happen if there are too many frequencies)
+				(this can happen if there are too many frequencies)
 		'''
 		tmp = dll.start
 		tmp.argtypes = [TaskHandle]
@@ -1234,7 +1238,7 @@ class RAW_VNA(object):
 
 		\exception ERR_WRONG_STATE if the Task is in the TASK_UNINITIALIZED state
 		\exception ERR_FREQ_OUT_OF_BOUNDS if the frequency is beyond the allowed min/max. (You can get
-		    the min and max from the HardwareDetails struct returned by getHardwareDetails())
+			the min and max from the HardwareDetails struct returned by getHardwareDetails())
 		\exception VNADLL_API ErrCode utilNearestLegalFreq(TaskHandle t, double& freq);
 		'''
 
@@ -1273,7 +1277,7 @@ class RAW_VNA(object):
 
 		\exception ERR_WRONG_STATE if the Task is in the TASK_UNINITIALIZED state
 		\exception ERR_FREQ_OUT_OF_BOUNDS if one of the bounds is beyond the allowed min/max. (You can get
-		    the min and max from the HardwareDetails struct returned by getHardwareDetails())
+			the min and max from the HardwareDetails struct returned by getHardwareDetails())
 		\exception ERR_TOO_MANY_POINTS if N is larger than the maximum allowed (see \ref HardwareDetails)
 		'''
 
@@ -1347,7 +1351,7 @@ class RAW_VNA(object):
 
 		\exception ERR_WRONG_STATE if the Task is not in the TASK_STOPPED state
 		\exception ERR_FREQ_OUT_OF_BOUNDS if one of the bounds is beyond the allowed min/max. (You can get
-		    the min and max from the HardwareDetails struct returned by getHardwareDetails())
+			the min and max from the HardwareDetails struct returned by getHardwareDetails())
 		\exception ERR_TOO_MANY_POINTS if N is larger than the maximum allowed (see HardwareDetails)
 
 		'''
@@ -1372,7 +1376,7 @@ class RAW_VNA(object):
 
 		Args:
 			paths - Logical OR (`|` operator) of the \ref RFPathSelector-Py paths to measure.
-			    Passing 0 will measure JUST the reference, which is valid but kind of useless.
+				Passing 0 will measure JUST the reference, which is valid but kind of useless.
 
 		Returns:
 			(T1R1, T1R2, T2R1, T2R2, Ref) - numpy complex arrays as a 5-tuple. Each
@@ -1432,7 +1436,7 @@ class RAW_VNA(object):
 
 		Args:
 			paths - Logical OR (`|` operator) of the \ref RFPathSelector-Py paths to measure.
-			    Passing 0 will measure JUST the reference, which is valid but kind of useless.
+				Passing 0 will measure JUST the reference, which is valid but kind of useless.
 
 		Returns:
 			(S11, S21, S12, S22) - numpy complex arrays as a 4-tuple. Each
@@ -1484,7 +1488,7 @@ class RAW_VNA(object):
 
 		Args:
 			step  - Instance of \ref CalibrationStepSelector-Py corresponding the calibration
-			         step which should be measured.
+					 step which should be measured.
 
 
 		---
@@ -1493,7 +1497,7 @@ class RAW_VNA(object):
 		\exception ERR_NO_RESPONSE if the unit did not respond to commands
 		\exception ERR_WRONG_STATE if the Task is not in the TASK_STARTED state
 		\exception ERR_BAD_CAL if the current calibration settings do not match the current
-		    sweep settings (clear the calibration first before recalibrating)
+			sweep settings (clear the calibration first before recalibrating)
 		\exception ERR_BYTES if the wrong number of bytes were received
 		\exception ERR_INTERRUPTED if the measurement was interrupted
 
@@ -1727,7 +1731,7 @@ class RAW_VNA(object):
 
 		N = len(freqs)
 		assert N == len(e00)  == len(e11)  == len(e10e01)   == len(e30)  == len(e22)  == len(e10e32) \
-	             == len(ep33) == len(ep22) == len(ep12ep32) == len(ep03) == len(ep11) == len(ep23ep01)
+				 == len(ep33) == len(ep22) == len(ep12ep32) == len(ep03) == len(ep11) == len(ep23ep01)
 
 		carr_freqs    = (ct.c_double * N)(*freqs)
 		carr_e00      = ComplexDataArrayFromNumpyArray(e00)
