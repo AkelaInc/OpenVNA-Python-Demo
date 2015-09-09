@@ -53,6 +53,7 @@ class VnaThread():
 	def __init__(self, vna_no, command_queue, response_queue):
 
 		self.vna_no = vna_no
+		self.vna_connected = False
 		self.log = logging.getLogger("Main.VNA-%s" % vna_no)
 
 		self.command_queue  = command_queue
@@ -94,23 +95,36 @@ class VnaThread():
 		command, params = command
 
 		if command == "connect":
-			try:
-				self.log.info("Connecting to VNA")
-				self.vna = VNA.VNA(*params, vna_no=self.vna_no)
-				self.vna.set_config(VNA.HOP_45K, VNA.ATTEN_0, freq=[self.start_f, self.stop_f, self.npts_s])
+			if not self.vna_connected:
+				try:
+					self.log.info("Connecting to VNA")
+					self.vna = VNA.VNA(*params, vna_no=self.vna_no)
+					self.vna.set_config(VNA.HOP_45K, VNA.ATTEN_0, freq=[self.start_f, self.stop_f, self.npts_s])
 
+					self.response_queue.put(("connect", True))
 
+				except VNA.VNA_Exception:
+					self.log.error("Failure connecting to the hardware!")
+					self.log.error("Please try again, or power-cycle the VNA.")
+					return
 
-			except VNA.VNA_Exception:
-				self.log.error("Failure connecting to the hardware!")
-				self.log.error("Please try again, or power-cycle the VNA.")
-				return
+				try:
+					self.vna.load_dll_cal_auto()
+				except Exception:
+					self.log.warning("No calibration for VNA Found.")
 
-			try:
-				self.vna.load_dll_cal_auto()
-			except Exception:
-				self.log.warning("No calibration for VNA Found.")
+				self.vna_connected = True
+			else:
+				try:
+					self.vna.stop()
+				except VNA.VNA_Exception:
+					pass
 
+				self.vna = None
+				self.log.info("VNA Disconnected")
+				self.response_queue.put(("connect", False))
+				self.vna_connected = False
+				self.runstate      = False
 
 		elif command == "path":
 
@@ -126,7 +140,7 @@ class VnaThread():
 					self.log.error("The sample path MUST be one of the set: '%s'. Received: '%s'", self.valid_paths, params)
 					return
 
-				print("Pathval: ", pathval)
+				# print("Pathval: ", pathval)
 				self.active_paths.append(pathval)
 				pathval = pathval.split()[0]
 				if self.vna.isCalibrationComplete():
@@ -134,7 +148,7 @@ class VnaThread():
 				else:
 					self.path |= self.paths_map[pathval]
 
-			print("Set path to ", self.path, params)
+			# print("Set path to ", self.path, params)
 
 
 

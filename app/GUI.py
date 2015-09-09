@@ -134,6 +134,7 @@ class VnaPanel(QWidget):
 	def __init__(self, vna_no, *args, **kwargs):
 		super(VnaPanel, self).__init__(*args, **kwargs)
 		self.vna_no = vna_no
+		self.connected = False
 
 		self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
@@ -193,6 +194,15 @@ class VnaPanel(QWidget):
 			arg, value = self.response_queue.get()
 			if arg == 'sweep':
 				self.update_plot(value)
+			elif arg == 'connect':
+				if value == True:
+					self.runButton.setEnabled(True)
+					self.connectButton.setText("Disconnect")
+				elif value == False:
+					self.runButton.setEnabled(False)
+					self.connectButton.setText("Connect")
+					self.runButton.setChecked(False)
+
 			else:
 				print("Unknown response type: '%s'" % arg)
 
@@ -243,8 +253,8 @@ class VnaPanel(QWidget):
 		self.targetPortWidget = QLineEdit('%s' % str(1023+self.vna_no))
 		self.connectButton    = QPushButton('Connect')
 		self.runButton        = QPushButton('Run')
-
 		self.runButton.setCheckable(True)
+		self.runButton.setEnabled(False)
 
 		self.connectButton.clicked.connect(self.buttonConnect_evt)
 		self.runButton.clicked.connect(self.buttonRun_evt)
@@ -409,9 +419,9 @@ class VnaPanel(QWidget):
 
 class PyVNA(QWidget):
 
-	def __init__(self):
+	def __init__(self, versionNo):
 		print("PyVNA __init__()")
-
+		self.version = versionNo
 
 		pyqtgraph.setConfigOption('background', 'w')
 		pyqtgraph.setConfigOption('foreground', 'k')
@@ -457,6 +467,7 @@ class PyVNA(QWidget):
 
 	def addControlPanel(self):
 
+		version = QLabel('Version: %s' % self.version)
 
 		addvnabtn = QPushButton('Add VNA')
 		addvnabtn.clicked.connect(self.addVnaBtnClick_evt)
@@ -467,6 +478,7 @@ class PyVNA(QWidget):
 
 
 		layout = QHBoxLayout()
+		layout.addWidget(version)
 		layout.addStretch()
 		layout.addWidget(addvnabtn)
 		layout.addWidget(closeButton)
@@ -474,7 +486,7 @@ class PyVNA(QWidget):
 
 
 	def initUI(self):
-		self.setWindowTitle('PyVNA')
+
 		self.layout = QVBoxLayout()
 		self.layout.addLayout(self.addControlPanel())
 		self.layout.addWidget(HLine())
@@ -499,17 +511,17 @@ class PyVNA(QWidget):
 
 
 class MainWindow(object):
-	def __init__(self):
+	def __init__(self, versionNo):
 
 
 		# Create an PyQT4 application object.
 		self.app = QApplication(sys.argv)
 
 		# The QWidget widget is the base class of all user interface objects in PyQt4.
-		self.ex = PyVNA()
+		self.ex = PyVNA(versionNo=versionNo)
 
 		# Set window size.
-		self.ex.resize(640, 480)
+		self.ex.resize(750, 480)
 
 		# Set window title
 
