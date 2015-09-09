@@ -28,11 +28,13 @@ from PyQt5.QtWidgets import QToolBox
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import QSize
+from PyQt5.QtGui  import QIcon
 
 from PyQt5.QtCore import pyqtSlot
 import pyqtgraph
-import numpy as np
+# import numpy as np
 
+import os.path
 import app.vnathread
 
 VNAS = {
@@ -416,8 +418,23 @@ class PyVNA(QWidget):
 
 		self.vna_idx = 1
 		super(PyVNA, self).__init__()
+
+		icopath = "./Akela Logo.ico"
+
+		# Icon isn't on current path, and we're running in a frozen context,
+		# so therefore look for the icon at the frozen location.
+		if not os.path.exists(icopath) and getattr(sys, 'frozen', False):
+			icopath = os.path.join(sys._MEIPASS, icopath)
+
+
+		icon = QIcon(icopath)
+		self.setWindowIcon(icon)
+
 		self.vnas = []
 		self.initUI()
+
+		self.setWindowTitle("OpenVNA Python Example Program")
+
 
 
 	def addVnaBtnClick_evt(self):

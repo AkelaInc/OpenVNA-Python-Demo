@@ -26,7 +26,6 @@ a = Analysis(['main.py'],
 
 
 excludes = [
-	"icudt53.dll",
 	"tcl86t.dll",
 	"tk86t.dll",
 ]
@@ -43,28 +42,45 @@ for item in a.binaries[:]:
 
 # Manually include the VNA dll
 a.binaries.append(("vnadll.dll", "./VNA/vnadll.dll", "BINARY"))
+# And the icon
+a.binaries.append(("Akela Logo.ico", "./Akela Logo.ico", "BINARY"))
+
+a.binaries.append(("msvcp100d.dll", "C:/Program Files (x86)/Microsoft Visual Studio 10.0/VC/redist/Debug_NonRedist/x64/Microsoft.VC100.DebugCRT/msvcp100d.dll", "BINARY"))
+a.binaries.append(("msvcr100d.dll", "C:/Program Files (x86)/Microsoft Visual Studio 10.0/VC/redist/Debug_NonRedist/x64/Microsoft.VC100.DebugCRT/msvcr100d.dll", "BINARY"))
 
 
-pyz = PYZ(a.pure, a.zipped_data,
-			 cipher=block_cipher)
+
+pyz = PYZ(a.pure, a.zipped_data)
 
 exe = EXE(pyz,
-		  a.scripts,
-		  exclude_binaries=True,
-		  name='OpenVNA.exe',
-		  debug=False,
-		  strip=None,
-		  upx=True,
-		  console=True )
+			a.scripts,
+			a.binaries,
+			a.zipfiles,
+			a.datas,
+			# exclude_binaries=True,
+			name    = 'PyOpenVNA.exe',
+			debug   = False,
+			strip   = None,
+			upx     = False,
+			console = True,
+			icon    = "./Akela Logo.ico"
+			)
 
-coll = COLLECT(exe,
-			   a.binaries,
-			   a.zipfiles,
-			   a.datas,
-			   strip=None,
-			   upx=True,
-			   name='OpenVNA')
 
-app = BUNDLE(coll,
-		   name='OpenVNA.exe',
-		   icon=None)
+# exe = EXE(pyz,
+# 		  a.scripts,
+# 		  exclude_binaries=True,
+# 		  name='OpenVNA.exe',
+# 		  debug=False,
+# 		  strip=None,
+# 		  upx=False,
+# 		  console=True )
+
+# coll = COLLECT(exe,
+# 			   a.binaries,
+# 			   a.zipfiles,
+# 			   a.datas,
+# 			   strip=None,
+# 			   upx=False,
+# 			   name='OpenVNA')
+
