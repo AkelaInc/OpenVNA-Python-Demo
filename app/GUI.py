@@ -152,12 +152,52 @@ class VnaPanel(QWidget):
 		self.timer.start()
 		self.updateSweepParameters()
 
+	def update_ffts(self, mag, freq, pens):
+		paths = []
+		keys = list(mag.keys())
+		keys.sort()
+		for key in keys:
+			value = mag[key]
+			color = pens.pop()
+			ret = self.plot.plot(freq, value, pen=color, antialias=True)
+
+			# Oh god, abusing nbsp here is HORRIBLE.
+			# The spacing of the legend is ghastly without it, though.
+			self.plot.plotItem.legend.addItem(ret, "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"+key)
+			paths.append(key)
+		return paths
+
+	def update_sparams(self, mag, freq, pens):
+		paths = []
+		keys = list(mag.keys())
+		keys.sort()
+		for key in keys:
+			value = mag[key]
+			color = pens.pop()
+			ret = self.plot.plot(freq, value, pen=color, antialias=True)
+
+			# Oh god, abusing nbsp here is HORRIBLE.
+			# The spacing of the legend is ghastly without it, though.
+			self.plot.plotItem.legend.addItem(ret, "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"+key)
+			paths.append(key)
+		return paths
+
 	def update_plot(self, data):
 
-		mag = data['comp_data']
-		freq = data['pts']
+		if len(data['fft_data']) and len(data['comp_data']):
+			self.plot.setLabel("left", text="Magnitude")
+			self.plot.setLabel("bottom", text="Time & Frequency")
+		elif len(data['comp_data']):
+			self.plot.setLabels(left="Magnitude (dB)", bottom="Frequency (Mhz)")
 
-		if len(mag) == 1:
+		elif len(data['fft_data']):
+			self.plot.setLabels(left="Magnitude", bottom="Time (nanoseconds)")
+
+		else:
+			self.plot.setLabels(left="Wat?", bottom="Wat?")
+
+
+		if len(data['comp_data']) + len(data['fft_data']) == 1:
 			pens = ["k"]
 		else:
 			# print(data)
@@ -168,23 +208,28 @@ class VnaPanel(QWidget):
 		self.plot.clear()
 		self.plot.plotItem.legend.items = []
 
-		keys = list(mag.keys())
-		if "FFT" in " ".join(keys):
-			self.plot.setLabel("left", text="Magnitude")
-			self.plot.setLabel("bottom", text="Time & Frequency")
-		else:
-			self.plot.setLabels(left="Magnitude (dB)", bottom="Frequency (Mhz)")
-		keys.sort()
-		for key in keys:
-			value = mag[key]
-			# print("Plotting", key)
-			color = pens.pop()
-			ret = self.plot.plot(freq, value, pen=color, antialias=True)
+		if len(data['comp_data']):
+			loc_pens = pens[0:len(data['comp_data'])]
+			paths += self.update_sparams(data['comp_data'], data['pts'], loc_pens)
 
-			# Oh god, abusing nbsp here is HORRIBLE.
-			# The spacing of the legend is ghastly without it, though.
-			self.plot.plotItem.legend.addItem(ret, "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"+key)
-			paths.append(key)
+
+			# Scale up the fft_data arrays so the look decent (this is
+			# a visual-only tweak, the Y values are meaningless here anyways)
+			for key in data['fft_data'].keys():
+				data['fft_data'][key] = data['fft_data'][key] * 800
+
+		if len(data['fft_data']):
+			loc_pens = pens[len(data['comp_data']):len(data['comp_data'])+len(data['fft_data'])]
+
+			if len(data['comp_data']):
+				x_ax_val = data['pts']
+			else:
+				x_ax_val = data['fft_pts']
+
+
+			paths += self.update_ffts(data['fft_data'], x_ax_val, loc_pens)
+
+
 		self.plot.setTitle(title='VNA %s - %s' % (self.targetIpWidget.text(), ", ".join(paths)))
 
 
@@ -213,6 +258,7 @@ class VnaPanel(QWidget):
 	def buttonRun_evt(self):
 		press = self.runButton.isChecked()
 		self.command_queue.put(("run", press))
+		self.chkbox_change_evt()
 
 
 	def buttonCalibrate_evt(self):
@@ -225,6 +271,7 @@ class VnaPanel(QWidget):
 
 		layout = QVBoxLayout()
 		self.plot = pyqtgraph.PlotWidget(title='VNA', labels={'left' : "Magnitude (dB)", 'bottom' : "Frequency (Mhz)"}, antialias=True)
+
 		self.plot.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 		self.plot.enableAutoScale()
 		self.plot.showGrid(x=True, y=True, alpha=0.35)
@@ -278,7 +325,7 @@ class VnaPanel(QWidget):
 		ip_container.setLayout(layout)
 		return ip_container
 
-	def chkbox_change_evt(self, checked):
+	def chkbox_change_evt(self, dummy_checked=None):
 		checked = []
 		for cb in self.param_checkboxes:
 			if cb.isChecked():
@@ -364,6 +411,8 @@ class VnaPanel(QWidget):
 		b7 = QCheckBox('S12 FFT')
 		b8 = QCheckBox('S22 FFT')
 		b1.toggle()
+		b7.toggle()
+
 		inputlayout1.addWidget(b1, 0, 0)
 		inputlayout1.addWidget(b2, 1, 0)
 		inputlayout1.addWidget(b3, 0, 1)

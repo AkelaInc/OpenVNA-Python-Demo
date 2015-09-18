@@ -63,7 +63,7 @@ class VnaThread():
 		self.log.info("VNA Thread running")
 		self.path = VNA.PATH_T1R1
 
-		self.active_paths = ["S11"]
+		self.active_paths = []
 
 		self.start_f = 1000
 		self.stop_f  = 2000
@@ -140,7 +140,6 @@ class VnaThread():
 					self.log.error("The sample path MUST be one of the set: '%s'. Received: '%s'", self.valid_paths, params)
 					return
 
-				# print("Pathval: ", pathval)
 				self.active_paths.append(pathval)
 				pathval = pathval.split()[0]
 				if self.vna.isCalibrationComplete():
@@ -148,8 +147,7 @@ class VnaThread():
 				else:
 					self.path |= self.paths_map[pathval]
 
-			# print("Set path to ", self.path, params)
-
+			print("Actively measured paths: ", self.active_paths)
 
 
 
@@ -226,6 +224,20 @@ class VnaThread():
 			self.log.error("Unknown command: '%s'", command)
 			self.log.error("Command parameters: '%s'", params)
 
+
+	def get_fft(self, data, points):
+		fft_data = np.absolute(np.fft.ifft(data))
+
+		pts = np.array(range(len(points)))
+		df = abs(self.start_f - self.stop_f) / self.npts_s
+
+		# Convert to hertz
+		df = df * 1e6
+		pts = pts * (1 / (len(pts) * df * 2))
+
+		pts = pts * 1e9
+		return fft_data, pts
+
 	def get_data(self):
 		have_cal = self.vna.isCalibrationComplete()
 
@@ -237,18 +249,23 @@ class VnaThread():
 
 		compensated_data = {}
 
-
+		fft_data = {}
+		fft_pts  = []
+		frequencies = self.vna.getFrequencies()
 		for path in self.active_paths:
 			base = path.split()[0]
 			key, val = get_param_from_ret(base, return_values)
 			if "FFT" in path:
-				compensated_data[path] = np.absolute(np.fft.ifft(val)) * 800
+				fft_data_tmp, fft_pts = self.get_fft(val, frequencies)
+				fft_data[path] = fft_data_tmp
 			else:
 				compensated_data[path] = log_mag(val)
 
 		response = {
 			'comp_data' : compensated_data,
-			'pts'       : self.vna.getFrequencies(),
+			'pts'       : frequencies,
+			'fft_data'  : fft_data,
+			'fft_pts'   : fft_pts,
 		}
 		self.response_queue.put(("sweep", response))
 
