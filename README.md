@@ -27,11 +27,12 @@ Dependencies:
  - Numpy (the API calls take/return numpy arrays)
  - Colorama (For logging niceness)
 
-NOTE: The Version of PyQtGraph in Pip is (as of 2015-09-03) sufficently out of
-date that is will not work (it doesn't support Qt5). If you build from current
-sources, it works fine.
+NOTE: The Version of PyQtGraph in PyPi/Pip is (as of 2015-09-03) sufficently out of
+date that is will not work (it doesn't support Qt5). If you build from current PyQtGraph
+sources, it works fine, and doing so isn't too much of an affair as PyQtGraph 
+is pure python, and does not require a compiler.
 
 Currently, this demo has been tested on both linux and windows.
 
-Once the dependencies are installed, simply running `python main.py` will start
-the demo.
+Once the dependencies are installed, simply running `py -3 main.py` from the repository
+root will start the demo.
