@@ -23,8 +23,12 @@ def get_search_paths():
 	locations = []
 	loc = os.path.dirname(os.path.abspath(__file__))
 	up = os.path.abspath(os.path.join(loc, "../"))
+	build_dir_1 = os.path.abspath(os.path.join(loc, "../../../x64/Debug/"))
+	build_dir_2 = os.path.abspath(os.path.join(loc, "../../../x64/Release/"))
 	locations.append(loc)
 	locations.append(up)
+	locations.append(build_dir_1)
+	locations.append(build_dir_2)
 
 	split_on = {"Linux" : ":", "Windows" : ";"}
 	split = os.environ['PATH'].split(split_on[platform.system()])
@@ -184,6 +188,7 @@ def handleReturnCode(code, message = ""):
 
 
 	'''
+
 
 	if code in Exception_Map:
 		raise Exception_Map[code](message)
@@ -445,40 +450,6 @@ class HardwareDetails(ct.Structure):
 
 		return ret
 
-## \addtogroup RFPathSelector-Py
-# Proxy values for underlying C values from \ref RFPathSelector.
-#
-# Values should be treated as immutable, and only used as parameters
-# to pass into DLL cals.
-#
-# While the underlying type is numeric, no assumptions can or should be made about the
-# actual integer value, as it may change with DLL updates. Only equality
-# operations should be assumed to be valid for any comparisons or
-# value checks.
-#
-# Note that Doxygen incorrectly identifies the type of these values
-# as `tuple`, as the ctypes library does some runtime type munging that
-# doxygen doesn't understand.
-#
-# @{
-RFPath = ct.c_int #typedef
-PATH_T1R1	= RFPath.in_dll(dll, "PATH_T1R1").value
-PATH_T1R2	= RFPath.in_dll(dll, "PATH_T1R2").value
-PATH_T2R1	= RFPath.in_dll(dll, "PATH_T2R1").value
-PATH_T2R2	= RFPath.in_dll(dll, "PATH_T2R2").value
-PATH_REF	= RFPath.in_dll(dll, "PATH_REF").value
-
-
-## Dictionary for mapping rf path values to human-readable string representations of the value.
-RFPathBOOK = 	{
-					PATH_T1R1 : 'PATH_T1R1',
-					PATH_T1R2 : 'PATH_T1R2',
-					PATH_T2R1 : 'PATH_T2R1',
-					PATH_T2R2 : 'PATH_T2R2',
-					PATH_REF  : 'PATH_REF'
-				}
-
-## @}
 
 
 ## \addtogroup SParameterSelector-Py
@@ -588,7 +559,7 @@ def ComplexDataFactory(data_len):
 	for a ComplexData array with a length of 5. The second
 	call `()` instantiates a instance of that class definition.
 
-	Idempotency gaurantees that `ComplexDataFactory(5) == ComplexDataFactory(5)`,
+	Idempotency guarantees that `ComplexDataFactory(5) == ComplexDataFactory(5)`,
 	as if there was not some internal state, it would construct two *different*
 	class defintions with the same properties, and then the parameter/return
 	type checking in `ctypes` would throw errors as the classes would not
@@ -686,7 +657,7 @@ def DoubleArrayFactory(data_len):
 	for a double array with a length of 5. The second
 	call `()` instantiates a instance of that class definition.
 
-	Idempotency gaurantees that `DoubleArrayFactory(5) == DoubleArrayFactory(5)`,
+	Idempotency guarantees that `DoubleArrayFactory(5) == DoubleArrayFactory(5)`,
 	as if there was not some internal state, it would construct two *different*
 	class defintions with the same properties, and then the parameter/return
 	type checking in `ctypes` would throw errors as the classes would not
@@ -782,10 +753,10 @@ class RAW_VNA(object):
 		tmp = dll.createTask
 		tmp.argtypes = []
 		tmp.restype = TaskHandle
-		self.task = tmp()
+		self.__task = tmp()
 
 	def __del__(self):
-		if self.task:
+		if self.__task:
 			self.deleteTask()
 
 
@@ -805,9 +776,9 @@ class RAW_VNA(object):
 		tmp = dll.deleteTask
 		tmp.argtypes = [TaskHandle]
 		tmp.restype = None
-		tmp(self.task)
+		tmp(self.__task)
 
-		self.task = None
+		self.__task = None
 
 
 	def initialize(self):
@@ -832,7 +803,7 @@ class RAW_VNA(object):
 		tmp = dll.initialize
 		tmp.argtypes = [TaskHandle, ct.c_void_p, ct.c_void_p]
 		tmp.restype = ErrCode
-		ret = tmp(self.task, 0, 0)
+		ret = tmp(self.__task, 0, 0)
 		handleReturnCode(ret)
 
 	def start(self):
@@ -860,8 +831,10 @@ class RAW_VNA(object):
 		tmp = dll.start
 		tmp.argtypes = [TaskHandle]
 		tmp.restype = ErrCode
-		ret = tmp(self.task)
-		handleReturnCode(ret)
+		ret = tmp(self.__task)
+
+		state = TaskStateBOOK[self.getState()]
+		handleReturnCode(ret, message="Current state = '%s'" % state)
 
 
 	def stop(self):
@@ -881,8 +854,9 @@ class RAW_VNA(object):
 		tmp = dll.stop
 		tmp.argtypes = [TaskHandle]
 		tmp.restype = ErrCode
-		ret = tmp(self.task)
-		handleReturnCode(ret)
+		ret = tmp(self.__task)
+		state = TaskStateBOOK[self.getState()]
+		handleReturnCode(ret, message="Current state = '%s'" % state)
 
 
 	def setIPAddress(self, ipv4):
@@ -912,7 +886,7 @@ class RAW_VNA(object):
 		except TypeError:
 			addr = bytes(ipv4)
 
-		ret = tmp(self.task, addr)
+		ret = tmp(self.__task, addr)
 		handleReturnCode(ret)
 
 
@@ -936,7 +910,7 @@ class RAW_VNA(object):
 		tmp = dll.setIPPort
 		tmp.argtypes = [TaskHandle, ct.c_int]
 		tmp.restype = ErrCode
-		ret = tmp(self.task, port)
+		ret = tmp(self.__task, port)
 		handleReturnCode(ret)
 
 
@@ -944,7 +918,7 @@ class RAW_VNA(object):
 		''' Sets the default time to wait, in milliseconds, for a unit to reply to a command
 		before giving up and returning an ERR_NO_RESPONSE condition. For the measurement
 		functions, this is the amount of time to wait beyond the expected sweep time.
-		When a Task is created, the timeout value defaults to 150.
+		When a Task is created, the timeout value defaults to 1000.
 
 		A timeout value of 0 results in non-blocking call, where the call will return
 		immediately if there is no data in the OS RX Buffer.
@@ -961,7 +935,7 @@ class RAW_VNA(object):
 		tmp.restype = ErrCode
 
 		# setTimeout ALWAYS returns ERR_OK, Check it anyways
-		ret = tmp(self.task, timeout)
+		ret = tmp(self.__task, timeout)
 		handleReturnCode(ret)
 
 
@@ -984,7 +958,7 @@ class RAW_VNA(object):
 		tmp = dll.setHopRate
 		tmp.argtypes = [TaskHandle, HopRate]
 		tmp.restype = ErrCode
-		ret = tmp(self.task, rate)
+		ret = tmp(self.__task, rate)
 		handleReturnCode(ret)
 
 
@@ -1007,7 +981,7 @@ class RAW_VNA(object):
 		tmp = dll.setAttenuation
 		tmp.argtypes = [TaskHandle, Attenuation]
 		tmp.restype = ErrCode
-		ret = tmp(self.task, atten)
+		ret = tmp(self.__task, atten)
 		handleReturnCode(ret)
 
 
@@ -1041,7 +1015,6 @@ class RAW_VNA(object):
 
 		---
 
-
 		\exception ERR_WRONG_STATE if the Task is not in the TASK_STOPPED state
 		\exception ERR_FREQ_OUT_OF_BOUNDS if a frequency is beyond the allowed min/max. (You can get
 			the min and max from the \ref HardwareDetails struct returned by \ref getHardwareDetails())
@@ -1051,7 +1024,7 @@ class RAW_VNA(object):
 		tmp = dll.setFrequencies
 		tmp.argtypes = [TaskHandle, DoubleArrayFactory(N), ct.c_uint]
 		tmp.restype = ErrCode
-		ret = tmp(self.task, freqs, N)
+		ret = tmp(self.__task, freqs, N)
 		handleReturnCode(ret)
 
 
@@ -1067,14 +1040,14 @@ class RAW_VNA(object):
 		tmp = dll.getState
 		tmp.argtypes = [TaskHandle]
 		tmp.restype = TaskState
-		ret = tmp(self.task)
+		ret = tmp(self.__task)
 		return ret
 
 
 	def getTimeout(self):
 		''' Get the current network timeout setting for communications to the VNA.
 
-		When a Task is first created, the timeout defaults to 150 milliseconds.
+		When a Task is first created, the timeout defaults to 1000 milliseconds.
 
 		Args:
 			None
@@ -1085,7 +1058,7 @@ class RAW_VNA(object):
 		tmp = dll.getTimeout
 		tmp.argtypes = [TaskHandle]
 		tmp.restype = ct.c_uint
-		ret = tmp(self.task)
+		ret = tmp(self.__task)
 		return ret
 
 	def getIPAddress(self):
@@ -1101,7 +1074,7 @@ class RAW_VNA(object):
 		tmp = dll.getIPAddress
 		tmp.argtypes = [TaskHandle]
 		tmp.restype = ct.c_char_p
-		ret = tmp(self.task)
+		ret = tmp(self.__task)
 		if ret:
 			ret = ret.decode("ascii")
 		return ret
@@ -1120,7 +1093,7 @@ class RAW_VNA(object):
 		tmp = dll.getIPPort
 		tmp.argtypes = [TaskHandle]
 		tmp.restype = ct.c_int
-		ret = tmp(self.task)
+		ret = tmp(self.__task)
 		return ret
 
 	def getHopRate(self):
@@ -1137,7 +1110,7 @@ class RAW_VNA(object):
 		tmp = dll.getHopRate
 		tmp.argtypes = [TaskHandle]
 		tmp.restype = HopRate
-		ret = tmp(self.task)
+		ret = tmp(self.__task)
 		return ret
 
 	def getAttenuation(self):
@@ -1154,7 +1127,7 @@ class RAW_VNA(object):
 		tmp = dll.getAttenuation
 		tmp.argtypes = [TaskHandle]
 		tmp.restype = Attenuation
-		ret = tmp(self.task)
+		ret = tmp(self.__task)
 		return ret
 
 
@@ -1174,7 +1147,7 @@ class RAW_VNA(object):
 		tmp = dll.getNumberOfFrequencies
 		tmp.argtypes = [TaskHandle]
 		tmp.restype = ct.c_uint
-		ret = tmp(self.task)
+		ret = tmp(self.__task)
 		return ret
 
 
@@ -1193,7 +1166,7 @@ class RAW_VNA(object):
 		tmp = dll.getFrequencies
 		tmp.argtypes = [TaskHandle]
 		tmp.restype = ct.POINTER(ct.c_double*self.getNumberOfFrequencies())
-		ret = tmp(self.task)
+		ret = tmp(self.__task)
 		if ret:
 			ret = np.array(ret.contents[:])
 		else:
@@ -1218,7 +1191,7 @@ class RAW_VNA(object):
 		tmp = dll.getHardwareDetails
 		tmp.argtypes = [TaskHandle]
 		tmp.restype = HardwareDetails
-		ret = tmp(self.task)
+		ret = tmp(self.__task)
 		return ret.to_dict()
 
 	def utilNearestLegalFreq(self, target_freq):
@@ -1246,7 +1219,7 @@ class RAW_VNA(object):
 		tmp = dll.utilNearestLegalFreq
 		tmp.argtypes = [TaskHandle, ct.POINTER(ct.c_double)]
 		tmp.restype = ErrCode
-		ret = tmp(self.task, ct.pointer(freq) )
+		ret = tmp(self.__task, ct.pointer(freq) )
 		handleReturnCode(ret)
 
 		return freq.val
@@ -1288,7 +1261,7 @@ class RAW_VNA(object):
 		tmp = dll.utilFixLinearSweepLimits
 		tmp.argtypes = [TaskHandle, ct.POINTER(ct.c_double), ct.POINTER(ct.c_double), ct.c_uint]
 		tmp.restype = ErrCode
-		ret = tmp(self.task, ct.pointer(start_freq), ct.pointer(end_freq), N )
+		ret = tmp(self.__task, ct.pointer(start_freq), ct.pointer(end_freq), N )
 		handleReturnCode(ret)
 
 		return (start_freq.value, end_freq.value)
@@ -1325,7 +1298,7 @@ class RAW_VNA(object):
 		tmp = dll.utilPingUnit
 		tmp.argtypes = [TaskHandle]
 		tmp.restype = ErrCode
-		ret = tmp(self.task)
+		ret = tmp(self.__task)
 		handleReturnCode(ret)
 
 
@@ -1358,26 +1331,21 @@ class RAW_VNA(object):
 		tmp = dll.utilGenerateLinearSweep
 		tmp.argtypes = [TaskHandle, ct.c_double, ct.c_double, ct.c_uint]
 		tmp.restype = ErrCode
-		ret = tmp(self.task, startFreq, endFreq, N)
+		ret = tmp(self.__task, startFreq, endFreq, N)
 		handleReturnCode(ret)
 
 
-	def measureUncalibrated(self, paths):
-		''' Measures the path(s) of your choice through the VNA, without applying calibration.
+	def measureUncalibrated(self):
+		''' Measures the paths through the VNA, without applying calibration.
 
-		The reference path is always measured.
+		All 5 paths are always measured.
 
 		Note that this function blocks while the measurement is being performed. Use the
 		interruptMeasurement() function to prematurely halt a slow measurement. The automatic
 		timeout value is the length of the measurement plus getTimeout().
 
-		Note that all paths are returned, even if not all paths are actually measured. Unmeasured
-		path arrays are all zero.
-
 		Args:
-			paths - Logical OR (`|` operator) of the \ref RFPathSelector-Py paths to measure.
-				Passing 0 will measure JUST the reference, which is valid but kind of useless.
-
+			None
 		Returns:
 			(T1R1, T1R2, T2R1, T2R2, Ref) - numpy complex arrays as a 5-tuple. Each
 			array is a 1-dimentional numpy array of complex numbers, with a length of
@@ -1395,6 +1363,7 @@ class RAW_VNA(object):
 		\exception ERR_BAD_PATH if there is something wrong with the paths parameter
 		\exception ERR_BYTES if the wrong number of bytes were received
 		\exception ERR_INTERRUPTED if the measurement was interrupted
+
 		'''
 
 		N = self.getNumberOfFrequencies()
@@ -1409,7 +1378,6 @@ class RAW_VNA(object):
 		tmp = dll.measureUncalibrated
 		tmp.argtypes = [
 							TaskHandle,
-							RFPath,
 							ComplexDataFactory(N),
 							ComplexDataFactory(N),
 							ComplexDataFactory(N),
@@ -1418,25 +1386,25 @@ class RAW_VNA(object):
 						]
 		tmp.restype = ErrCode
 
-		ret = tmp(self.task, paths, T1R1, T1R2, T2R1, T2R2, Ref)
-		handleReturnCode(ret)
+		ret = tmp(self.__task, T1R1, T1R2, T2R1, T2R2, Ref)
+
+		state = TaskStateBOOK[self.getState()]
+		handleReturnCode(ret, message="Current state = '%s'" % state)
 		return (T1R1.toArray(), T1R2.toArray(), T2R1.toArray(), T2R2.toArray(), Ref.toArray())
 
 
 
-	def measure2PortCalibrated(self, paths):
-		''' Measures the S-parameter(s) of your choice, applying the current calibration.
+	def measure2PortCalibrated(self):
+		''' Measures the S-parameter of the connected device, applying the current calibration.
 
-		Only paths specified by the 'paths' parameter get data copied into the output
-		arrays. To select more than one path, bitwise-OR the constants
-		together, e.g. `VNA.PARAM_S11 | VNA.PARAM_S22`
+		This command measures all 5 paths, as every path is required to properly apply the
+		calibration.
 
 		Note that this function blocks while the measurement is being performed. Use the
 		\ref interruptMeasurement() function to prematurely halt a slow measurement.
 
 		Args:
-			paths - Logical OR (`|` operator) of the \ref RFPathSelector-Py paths to measure.
-				Passing 0 will measure JUST the reference, which is valid but kind of useless.
+			None
 
 		Returns:
 			(S11, S21, S12, S22) - numpy complex arrays as a 4-tuple. Each
@@ -1467,9 +1435,9 @@ class RAW_VNA(object):
 		S22 = ComplexDataFactory(N)()
 
 		tmp = dll.measure2PortCalibrated
-		tmp.argtypes = [TaskHandle, SParameter, ComplexDataFactory(N), ComplexDataFactory(N), ComplexDataFactory(N), ComplexDataFactory(N)]
+		tmp.argtypes = [TaskHandle, ComplexDataFactory(N), ComplexDataFactory(N), ComplexDataFactory(N), ComplexDataFactory(N)]
 		tmp.restype = ErrCode
-		ret = tmp(self.task, paths, S11, S21, S12, S22)
+		ret = tmp(self.__task, S11, S21, S12, S22)
 
 		handleReturnCode(ret)
 
@@ -1505,7 +1473,7 @@ class RAW_VNA(object):
 		tmp = dll.measureCalibrationStep
 		tmp.argtypes = [TaskHandle, CalibrationStep]
 		tmp.restype = ErrCode
-		ret = tmp(self.task, step)
+		ret = tmp(self.__task, step)
 
 		handleReturnCode(ret)
 
@@ -1529,7 +1497,7 @@ class RAW_VNA(object):
 		tmp = dll.interruptMeasurement
 		tmp.argtypes = [TaskHandle]
 		tmp.restype = ErrCode
-		ret = tmp(self.task)
+		ret = tmp(self.__task)
 
 		handleReturnCode(ret)
 
@@ -1551,7 +1519,7 @@ class RAW_VNA(object):
 		tmp = dll.clearCalibration
 		tmp.argtypes = [TaskHandle]
 		tmp.restype = ErrCode
-		ret = tmp(self.task)
+		ret = tmp(self.__task)
 		handleReturnCode(ret)
 
 
@@ -1568,8 +1536,45 @@ class RAW_VNA(object):
 		tmp = dll.isCalibrationComplete
 		tmp.argtypes = [TaskHandle]
 		tmp.restype = ct.c_bool
-		ret = tmp(self.task)
+		ret = tmp(self.__task)
 		return ret
+
+
+	def hasFactoryCalibration(self):
+		''' Determine if the connected VNA has a preloaded factory calibration in it's embedded memory.
+
+		Args:
+			None
+
+		Returns:
+			True if the connected VNA has a factory calibration in it's PROM. False if it does not.
+
+		'''
+		tmp = dll.hasFactoryCalibration
+		tmp.argtypes = [TaskHandle]
+		tmp.restype = ct.c_bool
+		ret = tmp(self.__task)
+		return ret
+
+	def importFactoryCalibration(self):
+		''' Load the calibration from the VNA's embedded PROM into the current task.
+
+		Args:
+			None
+
+		Returns:
+			Nothing
+
+		Throws:
+			\exception ERR_BAD_CAL if the embedded calibration data is not present, or invalid.
+			\exception ERR_WRONG_STATE if the task is not in the TASK_STOPPED or TASK_STARTED state
+
+		'''
+		tmp = dll.importFactoryCalibration
+		tmp.argtypes = [TaskHandle]
+		tmp.restype = ErrCode
+		ret = tmp(self.__task)
+		handleReturnCode(ret)
 
 
 	def getCalibrationNumberOfFrequencies(self):
@@ -1587,7 +1592,7 @@ class RAW_VNA(object):
 		tmp = dll.getCalibrationNumberOfFrequencies
 		tmp.argtypes = [TaskHandle]
 		tmp.restype = ct.c_uint
-		ret = tmp(self.task)
+		ret = tmp(self.__task)
 		return ret
 
 
@@ -1608,7 +1613,7 @@ class RAW_VNA(object):
 		tmp.argtypes = [TaskHandle]
 		tmp.restype = ct.POINTER(ct.c_double*N)
 
-		ret = tmp(self.task)
+		ret = tmp(self.__task)
 		if ret:
 			ret = np.array(ret.contents[:])
 		else:
@@ -1672,7 +1677,7 @@ class RAW_VNA(object):
 		tmp = dll.exportCalibration
 		tmp.argtypes = [TaskHandle] + [ComplexDataFactory(N)] * 12
 		tmp.restype = ErrCode
-		ret = tmp(self.task, e00, e11, e10e01, e30, e22, e10e32, ep33, ep22, ep12ep32, ep03, ep11, ep23ep01)
+		ret = tmp(self.__task, e00, e11, e10e01, e30, e22, e10e32, ep33, ep22, ep12ep32, ep03, ep11, ep23ep01)
 		handleReturnCode(ret)
 
 		return (
@@ -1750,7 +1755,7 @@ class RAW_VNA(object):
 		tmp = dll.importCalibration
 		tmp.argtypes = [TaskHandle, ct.POINTER(ct.c_double), ct.c_uint] + [ComplexDataFactory(N)] * 12
 		tmp.restype = ErrCode
-		ret = tmp(self.task,
+		ret = tmp(self.__task,
 				carr_freqs,
 				N,
 				carr_e00,

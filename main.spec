@@ -41,13 +41,20 @@ for item in a.binaries[:]:
 
 
 # Manually include the VNA dll
-a.binaries.append(("vnadll.dll", "./VNA/vnadll.dll", "BINARY"))
+a.binaries.append(("vnadll.dll", "../../x64/Release/vnadll.dll", "BINARY"))
 # And the icon
 a.binaries.append(("Akela Logo.ico", "./Akela Logo.ico", "BINARY"))
 
-a.binaries.append(("msvcp100d.dll", "C:/Program Files (x86)/Microsoft Visual Studio 10.0/VC/redist/Debug_NonRedist/x64/Microsoft.VC100.DebugCRT/msvcp100d.dll", "BINARY"))
-a.binaries.append(("msvcr100d.dll", "C:/Program Files (x86)/Microsoft Visual Studio 10.0/VC/redist/Debug_NonRedist/x64/Microsoft.VC100.DebugCRT/msvcr100d.dll", "BINARY"))
-
+# Throw in the runtime library kitchen sink. It can't hurt, and might help.
+# Worst case, the binary is now a bit bigger.
+a.binaries.append(("msvcp100d.dll", "C:/Windows/System32/msvcp100d.dll", "BINARY"))
+a.binaries.append(("msvcr100d.dll", "C:/Windows/System32/msvcr100d.dll", "BINARY"))
+a.binaries.append(("msvcp120d.dll", "C:/Windows/System32/msvcp120d.dll", "BINARY"))
+a.binaries.append(("msvcr120d.dll", "C:/Windows/System32/msvcr120d.dll", "BINARY"))
+a.binaries.append(("msvcp100.dll",  "C:/Windows/System32/msvcp100.dll", "BINARY"))
+a.binaries.append(("msvcr100.dll",  "C:/Windows/System32/msvcr100.dll", "BINARY"))
+a.binaries.append(("msvcp120.dll",  "C:/Windows/System32/msvcp120.dll", "BINARY"))
+a.binaries.append(("msvcr120.dll",  "C:/Windows/System32/msvcr120.dll", "BINARY"))
 
 
 pyz = PYZ(a.pure, a.zipped_data)

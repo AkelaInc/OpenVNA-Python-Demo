@@ -3,7 +3,7 @@
 #
 
 import sys
-import sip
+
 
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtWidgets import QDoubleSpinBox
@@ -14,14 +14,12 @@ from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QLabel
 from PyQt5.QtWidgets import QLineEdit
 from PyQt5.QtWidgets import QPushButton
-from PyQt5.QtWidgets import QRadioButton
 from PyQt5.QtWidgets import QSizePolicy
 from PyQt5.QtWidgets import QSpinBox
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QDialog
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QDialogButtonBox
-from PyQt5.QtWidgets import QTextBrowser
 from PyQt5.QtWidgets import QCheckBox
 from PyQt5.QtWidgets import QToolBox
 
@@ -99,13 +97,13 @@ class CalibrateDialog(QDialog):
 
 	def createCallStepButtons(self):
 		steps = [
+			("STEP_THRU",     QPushButton('Through')),
 			("STEP_P1_OPEN",  QPushButton('Port 1 Open')),
 			("STEP_P1_SHORT", QPushButton('Port 1 Short')),
 			("STEP_P1_LOAD",  QPushButton('Port 1 Load')),
 			("STEP_P2_OPEN",  QPushButton('Port 2 Open')),
 			("STEP_P2_SHORT", QPushButton('Port 2 Short')),
 			("STEP_P2_LOAD",  QPushButton('Port 2 Load')),
-			("STEP_THRU",     QPushButton('Through')),
 		]
 
 		layout = QVBoxLayout()
@@ -257,6 +255,11 @@ class VnaPanel(QWidget):
 
 	def buttonRun_evt(self):
 		press = self.runButton.isChecked()
+		if press:
+			self.sweep_parameters_group.setEnabled(False)
+		else:
+			self.sweep_parameters_group.setEnabled(True)
+
 		self.command_queue.put(("run", press))
 		self.chkbox_change_evt()
 
@@ -265,6 +268,15 @@ class VnaPanel(QWidget):
 		print("Calibrate button!")
 		self.calButtonControl.exec_()
 		# self.command_queue.put(("connect", params))
+
+	def buttonManageCal_loadLocal_evt(self):
+		self.command_queue.put(("cal_data", "CAL_LOAD"))
+	def buttonManageCal_loadFactory_evt(self):
+		self.command_queue.put(("cal_data", "CAL_FACTORY"))
+	def buttonManageCal_clear_evt(self):
+		self.command_queue.put(("cal_data", "CAL_CLEAR"))
+
+		# self.calButtonControl.exec_()
 
 
 	def createPlotWindow(self):
@@ -284,7 +296,7 @@ class VnaPanel(QWidget):
 	def makeControlWindow(self):
 		tb = QToolBox()
 		tb.addItem(self.makeIpContainer(), "Connection and Run-State")
-		tb.addItem(self.makeMeasurementParameterControl(), "Measured Parameters")
+		tb.addItem(self.makeDisplayedParameterControl(), "Displayed Parameters")
 		tb.addItem(self.makeSweepControl(), "Sweep Parameters")
 		tb.addItem(self.makeCallButtonCtrl(), "Calibration")
 		tb.setMinimumWidth(220)
@@ -296,7 +308,7 @@ class VnaPanel(QWidget):
 
 	def makeIpContainer(self):
 
-		self.targetIpWidget   = QLineEdit('192.168.1.193')
+		self.targetIpWidget   = QLineEdit('192.168.1.223')
 		self.targetPortWidget = QLineEdit('%s' % str(1023+self.vna_no))
 		self.connectButton    = QPushButton('Connect')
 		self.runButton        = QPushButton('Run')
@@ -334,17 +346,31 @@ class VnaPanel(QWidget):
 		if len(checked) == 0:
 			checked = ['S21']
 
-
 		self.command_queue.put(("path", checked))
+
 
 	def makeCallButtonCtrl(self):
 		self.calButtonControl = CalibrateDialog(self)
 
-		self.do_cal = QPushButton('Start Calibration')
-		self.do_cal.clicked.connect(self.buttonCalibrate_evt)
+		self.clear_cal = QPushButton('Clear Calibration')
+		self.load_factory_cal = QPushButton('Load Factory Calibration')
+		# self.load_local_cal = QPushButton('Load Local Calibration')
+		# self.do_cal = QPushButton('Start Calibration Procedure')
+
+		self.clear_cal.clicked.connect(self.buttonManageCal_clear_evt)
+		self.load_factory_cal.clicked.connect(self.buttonManageCal_loadFactory_evt)
+		# self.load_local_cal.clicked.connect(self.buttonManageCal_loadLocal_evt)
+
+
+
+
+		# self.do_cal.clicked.connect(self.buttonCalibrate_evt)
 
 		layout = QVBoxLayout()
-		layout.addWidget(self.do_cal)
+		layout.addWidget(self.clear_cal)
+		layout.addWidget(self.load_factory_cal)
+		# layout.addWidget(self.load_local_cal)
+		# layout.addWidget(self.do_cal)
 
 		ip_container = QGroupBox("Calibrate");
 		ip_container.setLayout(layout)
@@ -382,10 +408,10 @@ class VnaPanel(QWidget):
 		inputlayout.addWidget(self.ptsCtrl,          2, 1, 1, 3)
 
 
-		ip_container = QGroupBox("Sweep Parameters");
-		ip_container.setLayout(inputlayout)
+		self.sweep_parameters_group = QGroupBox("Sweep Parameters");
+		self.sweep_parameters_group.setLayout(inputlayout)
 
-		return ip_container
+		return self.sweep_parameters_group
 
 
 	def updateSweepParameters(self):
@@ -394,7 +420,7 @@ class VnaPanel(QWidget):
 		stop  = self.stpCtrl.value()
 		self.deliverMessage(('sweep', (pts, start, stop)))
 
-	def makeMeasurementParameterControl(self):
+	def makeDisplayedParameterControl(self):
 
 		inputlayout1 = QGridLayout()
 		inputlayout2 = QGridLayout()
@@ -411,7 +437,10 @@ class VnaPanel(QWidget):
 		b7 = QCheckBox('S12 FFT')
 		b8 = QCheckBox('S22 FFT')
 		b1.toggle()
-		b7.toggle()
+		b2.toggle()
+		b3.toggle()
+		b4.toggle()
+		# b7.toggle()
 
 		inputlayout1.addWidget(b1, 0, 0)
 		inputlayout1.addWidget(b2, 1, 0)
@@ -496,13 +525,14 @@ class PyVNA(QWidget):
 
 
 
-	def addVnaBtnClick_evt(self):
+	def addVnaBtnClick_evt(self, force=False):
+
 		new = VnaPanel(len(self.vnas) + 1)
 		self.vnas.append(new)
 		self.layout.addWidget(new)
-		# self.updateSweepParameters()
 
 	def removeVnaBtnClick_evt(self):
+
 		if len(self.vnas) == 0:
 			print("No VNAs left to remove!")
 			return
@@ -511,7 +541,11 @@ class PyVNA(QWidget):
 		rm.close()
 		self.layout.removeWidget(rm)
 
-		sip.delete(rm)
+		# Ugly, ugly hacks to force the
+		# underlying widget to be destroyed.
+		rm.setParent(None)
+		rm.deleteLater()
+		rm = None
 
 
 	def addControlPanel(self):
@@ -539,7 +573,7 @@ class PyVNA(QWidget):
 		self.layout = QVBoxLayout()
 		self.layout.addLayout(self.addControlPanel())
 		self.layout.addWidget(HLine())
-		self.addVnaBtnClick_evt()
+		self.addVnaBtnClick_evt(force=True)
 		self.layout.setAlignment(Qt.AlignTop)
 
 		# self.installTimer()

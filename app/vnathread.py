@@ -3,9 +3,9 @@ import threading
 import VNA
 import time
 try:
-	import Queue as queue
-except:
 	import queue
+except ImportError:
+	import Queue as queue
 import runstate
 import traceback
 import logging
@@ -13,7 +13,6 @@ import numpy as np
 
 class ThreadExit(Exception):
 	pass
-
 
 
 
@@ -61,30 +60,13 @@ class VnaThread():
 		self.vna            = None
 		self.runstate       = False
 		self.log.info("VNA Thread running")
-		self.path = VNA.PATH_T1R1
+
 
 		self.active_paths = []
 
 		self.start_f = 1000
 		self.stop_f  = 2000
 		self.npts_s  = 1024
-
-		# For simplicitly, I'm using S names to refer to all paths, whether we're
-		# in uncalibrated or calibrated mode.
-		self.paths_map = {
-				'S11' : VNA.PATH_T1R1,
-				'S12' : VNA.PATH_T2R1,
-				'S21' : VNA.PATH_T1R2,
-				'S22' : VNA.PATH_T2R2
-				}
-
-		self.s_paths_map = {
-				'S11' : VNA.PARAM_S11,
-				'S12' : VNA.PARAM_S12,
-				'S21' : VNA.PARAM_S21,
-				'S22' : VNA.PARAM_S22
-				}
-
 
 		self.valid_paths = set(('S11', 'S12', 'S21', 'S22', 'S11 FFT', 'S21 FFT', 'S12 FFT', 'S22 FFT'))
 
@@ -97,21 +79,23 @@ class VnaThread():
 		if command == "connect":
 			if not self.vna_connected:
 				try:
-					self.log.info("Connecting to VNA")
+					self.log.info("Connecting to VNA. Please wait while the VNA's embedded calibration data is downloaded.")
 					self.vna = VNA.VNA(*params, vna_no=self.vna_no)
 					self.vna.set_config(VNA.HOP_45K, VNA.ATTEN_0, freq=[self.start_f, self.stop_f, self.npts_s])
 
 					self.response_queue.put(("connect", True))
+					self.log.info("VNA Connected, and embedded calibration retreived.")
 
 				except VNA.VNA_Exception:
 					self.log.error("Failure connecting to the hardware!")
 					self.log.error("Please try again, or power-cycle the VNA.")
 					return
 
-				try:
-					self.vna.load_dll_cal_auto()
-				except Exception:
-					self.log.warning("No calibration for VNA Found.")
+
+
+				if self.vna.hasFactoryCalibration():
+					self.log.info("VNA Has embedded calibration data")
+
 
 				self.vna_connected = True
 			else:
@@ -126,28 +110,6 @@ class VnaThread():
 				self.vna_connected = False
 				self.runstate      = False
 
-		elif command == "path":
-
-			if not self.vna:
-				self.log.error("You have to connect to a VNA first!")
-				return
-
-			self.path = 0
-
-			self.active_paths = []
-			for pathval in params:
-				if not pathval in self.valid_paths:
-					self.log.error("The sample path MUST be one of the set: '%s'. Received: '%s'", self.valid_paths, params)
-					return
-
-				self.active_paths.append(pathval)
-				pathval = pathval.split()[0]
-				if self.vna.isCalibrationComplete():
-					self.path |= self.s_paths_map[pathval]
-				else:
-					self.path |= self.paths_map[pathval]
-
-			print("Actively measured paths: ", self.active_paths)
 
 
 
@@ -180,6 +142,9 @@ class VnaThread():
 				self.log.error("You must have started the VNA to perform that operation!")
 				return
 
+			if params == "clear":
+				self.vna.clearCalibration()
+				return
 
 			reverseCalMap = {}
 			for key, value in VNA.CalibrationStepBOOK.items():
@@ -202,16 +167,37 @@ class VnaThread():
 			if not self.vna:
 				self.log.error("You have to connect to a VNA first!")
 				return
-			if params == "CAL_SAVE":
+			if params == "CAL_CLEAR":
+				self.vna.clearCalibration()
+			elif params == 'CAL_FACTORY':
+				self.vna.importFactoryCalibration()
+			elif params == "CAL_SAVE":
 				if not self.vna.isCalibrationComplete():
 					self.log.error("You need a calibration to save!")
 					return
 				self.vna.save_dll_cal_auto()
 			elif params == "CAL_LOAD":
-				self.vna.load_dll_cal_auto()
+				try:
+					self.vna.load_dll_cal_auto()
+				except Exception:
+					self.log.warning("No on-disk calibration for VNA Found.")
 			else:
 				self.log.error("Unknown 'cal_data' verb: '%s'", params)
 
+		elif command == "path":
+
+			if not self.vna:
+				self.log.error("You have to connect to a VNA first!")
+				return
+
+			self.active_paths = []
+			for pathval in params:
+				if not pathval in self.valid_paths:
+					self.log.error("The sample path MUST be one of the set: '%s'. Received: '%s'", self.valid_paths, params)
+					return
+
+				self.active_paths.append(pathval)
+			self.log.info("Actively measured paths: %s", self.active_paths)
 
 
 		elif command == "stop":
@@ -226,32 +212,63 @@ class VnaThread():
 
 
 	def get_fft(self, data, points):
-		fft_data = np.absolute(np.fft.ifft(data))
 
-		pts = np.array(range(len(points)))
-		df = abs(self.start_f - self.stop_f) / self.npts_s
+
+		data_len = data.shape[0]
+
+		# Apply windowing (needs to be an elementwise multiplication)
+		data = np.multiply(data, np.hanning(data_len))
+
+		# Pad the start of the array for phase-correctness, and
+		# the end to make the calculation a power of N
+		step_val = abs(self.start_f - self.stop_f) / self.npts_s
+		start_padding = max(int(self.start_f/step_val), 0)
+
+		startsize = start_padding + data_len
+
+		sizes = [128, 256, 512, 1024, 2048, 4096, 8192]
+		start_idx   = 0
+		output_size = 0
+		while output_size < startsize and start_idx < len(sizes):
+			output_size = sizes[start_idx]
+			start_idx += 1
+
+		end_padding = max(output_size - startsize, 0)
+
+		# Default padding value is "0"
+		arr = np.pad(data, (start_padding, end_padding), mode='constant')
+
+		fft_data = np.fft.ifft(arr)
+
+		# Chop off the negative time component (we don't care about it here)
+		fft_data = fft_data[:output_size/2]
+		fft_data = np.absolute(fft_data)
+
+		if self.start_f == self.stop_f:
+			return fft_data, np.array(range(fft_data.shape[0]))
+
+		pts = np.array(range(fft_data.shape[0]))
 
 		# Convert to hertz
-		df = df * 1e6
-		pts = pts * (1 / (len(pts) * df * 2))
+		step_val = step_val * 1e6
+		pts = pts * (1 / (len(pts) * step_val * 2))
 
 		pts = pts * 1e9
 		return fft_data, pts
 
 	def get_data(self):
-		have_cal = self.vna.isCalibrationComplete()
-
 
 		if self.vna.isCalibrationComplete():
-			return_values = self.vna.measure_cal([self.path])
+			return_values = self.vna.measure_cal()
 		else:
-			return_values = self.vna.measure_uncal([self.path])
+			return_values = self.vna.measure_uncal()
 
 		compensated_data = {}
 
 		fft_data = {}
 		fft_pts  = []
 		frequencies = self.vna.getFrequencies()
+		# for path in ["S11", "S22", "S12", "S21", "S11 FFT", "S22 FFT", "S12 FFT", "S21 FFT"]:
 		for path in self.active_paths:
 			base = path.split()[0]
 			key, val = get_param_from_ret(base, return_values)
@@ -271,16 +288,24 @@ class VnaThread():
 
 
 	def process(self):
-		if self.runstate and self.vna:
-			self.get_data()
+		try:
+			if self.runstate and self.vna:
+				self.get_data()
 
-		if self.command_queue.empty():
-			return False
-		else:
-			while not self.command_queue.empty():
-				command = self.command_queue.get()
-				self.dispatch(command)
-			return True
+			if self.command_queue.empty():
+				return False
+			else:
+				while not self.command_queue.empty():
+					command = self.command_queue.get()
+					self.dispatch(command)
+				return True
+		except ThreadExit as e:
+			raise e
+		except Exception as e:
+			self.log.error("VNA Exception?")
+			for line in traceback.format_exc().split("\n"):
+				self.log.error(line)
+			raise e
 
 	def shutdown(self):
 		if self.vna:
@@ -293,12 +318,16 @@ def threadProcess(vna_no, command_queue, response_queue):
 			try:
 				if vnat.process() == False:
 					time.sleep(0.1)
+
+			except ThreadExit as e:
+				raise e
 			except Exception:
 				print("Exception in vna interface thread!")
 				traceback.print_exc()
 	except ThreadExit:
 		print("Thread halting")
 	vnat.shutdown()
+	print("VNA Interface deallocated.")
 
 
 def create_thread(vna_no):
