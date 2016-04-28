@@ -1,0 +1,19 @@
+
+# The RiverBankComputing guy is not providing py2k Qt5 binaries:
+# (see here - https://riverbankcomputing.com/pipermail/pyqt/2013-October/033349.html )
+# Anyways, this was written against Qt5 in Py3k, so we need Qt5.
+# There's a pre-built package available on github, though it doesn't fit on PyPI, 
+# as the package is ~90 MBytes, due to the inclusion of the associated QT libraries.
+# Fetch it from git.
+# git+https://github.com/pyqt/python-qt5.git
+
+# The PyPI package of PyQtGraph is *ancient* and broken, and does not support 
+# Qt5. The version in git works fine, so grab that.
+# (see https://github.com/pyqtgraph/pyqtgraph/issues/225 )
+git+https://github.com/pyqtgraph/pyqtgraph.git
+# Note that this will cause numpy to be installed as a dependency.
+# If the requisite toolchain is not present to build numpy, you 
+# may want to use a precompiled binary distro from 
+# http://www.lfd.uci.edu/~gohlke/pythonlibs/
+
+colorama

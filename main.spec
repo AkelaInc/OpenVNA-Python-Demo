@@ -41,7 +41,7 @@ for item in a.binaries[:]:
 
 
 # Manually include the VNA dll
-a.binaries.append(("vnadll.dll", "../../x64/Release/vnadll.dll", "BINARY"))
+a.binaries.append(("vnadll.dll", "../../../x64/Release/vnadll.dll", "BINARY"))
 # And the icon
 a.binaries.append(("Akela Logo.ico", "./Akela Logo.ico", "BINARY"))
 
@@ -65,7 +65,7 @@ exe = EXE(pyz,
 			a.zipfiles,
 			a.datas,
 			# exclude_binaries=True,
-			name    = 'PyOpenVNA.exe',
+			name    = 'PyOpenVNA 1.6.exe',
 			debug   = False,
 			strip   = None,
 			upx     = False,

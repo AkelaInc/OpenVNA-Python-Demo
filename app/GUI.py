@@ -65,6 +65,11 @@ class CalibrateDialog(QDialog):
 		self.verticalLayout.addStretch(1)
 		self.verticalLayout.addWidget(self.createCloseButttonContainer())
 
+
+
+		self.plot_paths = ['S21']
+
+
 	def createCloseButttonContainer(self):
 
 		self.buttonBox = QDialogButtonBox(self)
@@ -155,32 +160,37 @@ class VnaPanel(QWidget):
 		keys = list(mag.keys())
 		keys.sort()
 		for key in keys:
-			value = mag[key]
-			color = pens.pop()
-			ret = self.plot.plot(freq, value, pen=color, antialias=True)
+			if key.replace("-", " ") in self.plot_paths:
+				value = mag[key]
+				color = pens.pop()
+				ret = self.plot.plot(freq, value, pen=color, antialias=True)
 
-			# Oh god, abusing nbsp here is HORRIBLE.
-			# The spacing of the legend is ghastly without it, though.
-			self.plot.plotItem.legend.addItem(ret, "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"+key)
-			paths.append(key)
+				# Oh god, abusing nbsp here is HORRIBLE.
+				# The spacing of the legend is ghastly without it, though.
+				self.plot.plotItem.legend.addItem(ret, "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"+key)
+				paths.append(key)
 		return paths
 
 	def update_sparams(self, mag, freq, pens):
 		paths = []
 		keys = list(mag.keys())
+
 		keys.sort()
 		for key in keys:
-			value = mag[key]
-			color = pens.pop()
-			ret = self.plot.plot(freq, value, pen=color, antialias=True)
+			if key in self.plot_paths:
+				value = mag[key]
+				color = pens.pop()
+				ret = self.plot.plot(freq, value, pen=color, antialias=True)
 
-			# Oh god, abusing nbsp here is HORRIBLE.
-			# The spacing of the legend is ghastly without it, though.
-			self.plot.plotItem.legend.addItem(ret, "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"+key)
-			paths.append(key)
+				# Oh god, abusing nbsp here is HORRIBLE.
+				# The spacing of the legend is ghastly without it, though.
+				self.plot.plotItem.legend.addItem(ret, "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"+key)
+				paths.append(key)
 		return paths
 
 	def update_plot(self, data):
+
+		assert data['pts']
 
 		if len(data['fft_data']) and len(data['comp_data']):
 			self.plot.setLabel("left", text="Magnitude")
@@ -213,12 +223,12 @@ class VnaPanel(QWidget):
 
 			# Scale up the fft_data arrays so the look decent (this is
 			# a visual-only tweak, the Y values are meaningless here anyways)
-			for key in data['fft_data'].keys():
-				data['fft_data'][key] = data['fft_data'][key] * 800
 
 		if len(data['fft_data']):
 			loc_pens = pens[len(data['comp_data']):len(data['comp_data'])+len(data['fft_data'])]
 
+			for key in data['fft_data'].keys():
+				data['fft_data'][key] = data['fft_data'][key] * 800
 			if len(data['comp_data']):
 				x_ax_val = data['pts']
 			else:
@@ -235,7 +245,7 @@ class VnaPanel(QWidget):
 		# print("Timer Event!")
 		while not self.response_queue.empty():
 			arg, value = self.response_queue.get()
-			if arg == 'sweep':
+			if arg == 'sweep data':
 				self.update_plot(value)
 			elif arg == 'connect':
 				if value == True:
@@ -308,8 +318,8 @@ class VnaPanel(QWidget):
 
 	def makeIpContainer(self):
 
-		self.targetIpWidget   = QLineEdit('192.168.1.223')
-		self.targetPortWidget = QLineEdit('%s' % str(1023+self.vna_no))
+		self.targetIpWidget   = QLineEdit('192.168.1.193')
+		self.targetPortWidget = QLineEdit('%s' % str(1025+self.vna_no))
 		self.connectButton    = QPushButton('Connect')
 		self.runButton        = QPushButton('Run')
 		self.runButton.setCheckable(True)
@@ -346,7 +356,7 @@ class VnaPanel(QWidget):
 		if len(checked) == 0:
 			checked = ['S21']
 
-		self.command_queue.put(("path", checked))
+		self.plot_paths = checked
 
 
 	def makeCallButtonCtrl(self):
@@ -354,23 +364,23 @@ class VnaPanel(QWidget):
 
 		self.clear_cal = QPushButton('Clear Calibration')
 		self.load_factory_cal = QPushButton('Load Factory Calibration')
-		# self.load_local_cal = QPushButton('Load Local Calibration')
-		# self.do_cal = QPushButton('Start Calibration Procedure')
+		self.load_local_cal = QPushButton('Load Local Calibration')
+		self.do_cal = QPushButton('Start Calibration Procedure')
 
 		self.clear_cal.clicked.connect(self.buttonManageCal_clear_evt)
 		self.load_factory_cal.clicked.connect(self.buttonManageCal_loadFactory_evt)
-		# self.load_local_cal.clicked.connect(self.buttonManageCal_loadLocal_evt)
+		self.load_local_cal.clicked.connect(self.buttonManageCal_loadLocal_evt)
 
 
 
 
-		# self.do_cal.clicked.connect(self.buttonCalibrate_evt)
+		self.do_cal.clicked.connect(self.buttonCalibrate_evt)
 
 		layout = QVBoxLayout()
 		layout.addWidget(self.clear_cal)
 		layout.addWidget(self.load_factory_cal)
-		# layout.addWidget(self.load_local_cal)
-		# layout.addWidget(self.do_cal)
+		layout.addWidget(self.load_local_cal)
+		layout.addWidget(self.do_cal)
 
 		ip_container = QGroupBox("Calibrate");
 		ip_container.setLayout(layout)
@@ -380,7 +390,7 @@ class VnaPanel(QWidget):
 
 		ptsLabel = QLabel('Number of Points:')
 		self.ptsCtrl  = QSpinBox()
-		self.ptsCtrl.setRange(1, 4001)
+		self.ptsCtrl.setRange(1, 2500)
 		self.ptsCtrl.setValue(1024)
 
 		stFLabel = QLabel('Start Freq:')

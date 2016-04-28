@@ -25,10 +25,17 @@ def get_search_paths():
 	up = os.path.abspath(os.path.join(loc, "../"))
 	build_dir_1 = os.path.abspath(os.path.join(loc, "../../../x64/Debug/"))
 	build_dir_2 = os.path.abspath(os.path.join(loc, "../../../x64/Release/"))
+
+	# Scons build dir
+	build_dir_3 = os.path.abspath(os.path.join(loc, "../../../build/vnadll/"))
+
+	build_dir_1 = os.path.abspath(os.path.join(loc, "../../../../x64/Debug/"))
+	build_dir_2 = os.path.abspath(os.path.join(loc, "../../../../x64/Release/"))
 	locations.append(loc)
 	locations.append(up)
 	locations.append(build_dir_1)
 	locations.append(build_dir_2)
+	locations.append(build_dir_3)
 
 	split_on = {"Linux" : ":", "Windows" : ";"}
 	split = os.environ['PATH'].split(split_on[platform.system()])
@@ -48,7 +55,7 @@ def find_dll():
 	system environment (`PATH`) for the DLL/SO.
 	'''
 
-	dll_lut = {"Linux" : "libvna.so", "Windows" : "vnadll.dll"}
+	dll_lut = {"Linux" : "libvnadll.so", "Windows" : "vnadll.dll"}
 
 	plat = platform.system()
 
@@ -63,6 +70,8 @@ def find_dll():
 		fq_dll_path = os.path.join(location, dll_name)
 		if os.path.exists(fq_dll_path):
 			return fq_dll_path
+	for fpath in locations:
+		print("	", fpath)
 	raise ValueError("Could not find DLL/SO! Searched paths: '%s'" % locations)
 
 dll = ct.CDLL(find_dll())
@@ -449,40 +458,6 @@ class HardwareDetails(ct.Structure):
 		ret["number_of_band_boundaries"] = self.number_of_band_boundaries
 
 		return ret
-
-
-
-## \addtogroup SParameterSelector-Py
-# Proxy values for underlying C values from \ref SParameterSelector.
-#
-# Values should be treated as immutable, and only used as parameters
-# to pass into DLL cals.
-#
-# While the underlying type is numeric, no assumptions can or should be made about the
-# actual integer value, as it may change with DLL updates. Only equality
-# operations should be assumed to be valid for any comparisons or
-# value checks.
-#
-# Note that Doxygen incorrectly identifies the type of these values
-# as `tuple`, as the ctypes library does some runtime type munging that
-# doxygen doesn't understand.
-# @{
-SParameter = ct.c_int #typedef
-PARAM_S11	= SParameter.in_dll(dll, "PARAM_S11").value
-PARAM_S21	= SParameter.in_dll(dll, "PARAM_S21").value
-PARAM_S12	= SParameter.in_dll(dll, "PARAM_S12").value
-PARAM_S22	= SParameter.in_dll(dll, "PARAM_S22").value
-
-## Dictionary for mapping S-parameter values to human-readable string representations of the value.
-SParameterBOOK =	{
-						PARAM_S11 : 'PARAM_S11',
-						PARAM_S21 : 'PARAM_S21',
-						PARAM_S12 : 'PARAM_S12',
-						PARAM_S22 : 'PARAM_S22'
-					}
-
-
-## @}
 
 
 
@@ -1163,15 +1138,21 @@ class RAW_VNA(object):
 				If no frequencies have been set, this function returns 0.
 
 		'''
+		npts = self.getNumberOfFrequencies()
+		retarr = (ct.c_double*npts)()
+
 		tmp = dll.getFrequencies
-		tmp.argtypes = [TaskHandle]
-		tmp.restype = ct.POINTER(ct.c_double*self.getNumberOfFrequencies())
-		ret = tmp(self.__task)
-		if ret:
-			ret = np.array(ret.contents[:])
+		tmp.argtypes = [TaskHandle, ct.POINTER(ct.c_double*npts), ct.c_int]
+
+		tmp.restype = ErrCode
+		ret = tmp(self.__task, ct.byref(retarr), npts)
+		handleReturnCode(ret)
+
+		if retarr:
+			retarr = np.array(retarr[:])
 		else:
-			ret = np.empty([0])
-		return ret
+			retarr = np.empty([0])
+		return retarr
 
 
 	def getHardwareDetails(self):
@@ -1574,6 +1555,8 @@ class RAW_VNA(object):
 		tmp.argtypes = [TaskHandle]
 		tmp.restype = ErrCode
 		ret = tmp(self.__task)
+		if ret == ERR_BAD_CAL:
+			raise vnaexceptions.VNA_Exception_Bad_Cal("The embedded VNA calibration is either damaged, or not present.")
 		handleReturnCode(ret)
 
 

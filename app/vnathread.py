@@ -9,10 +9,19 @@ except ImportError:
 import runstate
 import traceback
 import logging
+
 import numpy as np
+
+import os
+import os.path
+
+import VNA
+import VNA.vnaexceptions
+
 
 class ThreadExit(Exception):
 	pass
+
 
 
 
@@ -51,9 +60,11 @@ def get_param_from_ret(param, scan):
 class VnaThread():
 	def __init__(self, vna_no, command_queue, response_queue):
 
+
 		self.vna_no = vna_no
 		self.vna_connected = False
 		self.log = logging.getLogger("Main.VNA-%s" % vna_no)
+
 
 		self.command_queue  = command_queue
 		self.response_queue = response_queue
@@ -62,13 +73,92 @@ class VnaThread():
 		self.log.info("VNA Thread running")
 
 
-		self.active_paths = []
+		self.vna_fmax = 6000
+		self.vna_fmin = 375
 
-		self.start_f = 1000
-		self.stop_f  = 2000
-		self.npts_s  = 1024
 
-		self.valid_paths = set(('S11', 'S12', 'S21', 'S22', 'S11 FFT', 'S21 FFT', 'S12 FFT', 'S22 FFT'))
+		self.start_f     = 375
+		self.stop_f      = 6050
+		self.npts_s      = 256
+
+		# self.start_f = 500
+		# self.stop_f  = 6000
+		# self.npts_s  = 256
+
+		self.connection_params = None
+
+	def tryLoadLocalCal(self):
+		fname = "../VNA-Cal-{ip}.csv".format(ip=self.vna.getIPAddress())
+		if not os.path.exists(fname):
+			self.log.warning("Could not find local CSV cal file '%s'.", fname)
+			return False
+
+		self.log.info("Found local cal file! Trying to load.")
+		dat = np.genfromtxt(fname, delimiter=",", skip_header=1, dtype=np.float64)
+
+		# Row structure:
+		# Freq,
+		# EDFi,EDFq,
+		# ESFi,ESFq,
+		# ERFi,ERFq,
+		# EXFi,EXFq,
+		# ELFi,ELFq,
+		# ETFi,ETFq,
+		# EDRi,EDRq,
+		# ESRi,ESRq,
+		# ERRi,ERRq,
+		# EXRi,EXRq,
+		# ELRi,ELRq,
+		# ETRi,ETRq
+
+		freqs = dat[...,0]
+		EDF = dat[..., 1] + 1j* dat[..., 2] # EDF/e00
+		ESF = dat[..., 3] + 1j* dat[..., 4] # ESF/e11
+		ERF = dat[..., 5] + 1j* dat[..., 6] # ERF/e10e01
+		EXF = dat[..., 7] + 1j* dat[..., 8] # EXF/e30
+		ELF = dat[..., 9] + 1j* dat[...,10] # ELF/e22
+		ETF = dat[...,11] + 1j* dat[...,12] # ETF/e10e32
+		EDR = dat[...,13] + 1j* dat[...,14] # EDR/ep33
+		ESR = dat[...,15] + 1j* dat[...,16] # ESR/ep22
+		ERR = dat[...,17] + 1j* dat[...,18] # ERR/ep12ep32
+		EXR = dat[...,19] + 1j* dat[...,20] # EXR/ep03
+		ELR = dat[...,21] + 1j* dat[...,22] # ELR/ep11
+		ETR = dat[...,23] + 1j* dat[...,24] # ETR/ep23ep01
+
+		# print(freqs, EDF, ESF, ERF, EXF, ELF, ETF, EDR, ESR, ERR, EXR, ELR, ETR )
+
+		self.vna.importCalibration(freqs, EDF, ESF, ERF, EXF, ELF, ETF, EDR, ESR, ERR, EXR, ELR, ETR)
+
+		print("Cal name:", fname)
+		return True
+
+	def do_connect(self, connection_params):
+		if self.vna:
+			try:
+				# Try to stop the current acquisition, if any
+				self.vna.stop()
+			except Exception:
+				pass
+
+		self.vna = VNA.VNA(*connection_params, vna_no=self.vna_no)
+		self.vna.set_config(VNA.HOP_45K, VNA.ATTEN_0, freq=[self.start_f, self.stop_f, self.npts_s])
+		self.vna.setTimeout(500)
+
+
+
+		try:
+			self.vna.importFactoryCalibration()
+			self.log.info("Factory calibration loaded! Cal complete: %s", self.vna.isCalibrationComplete())
+		except VNA.VNA_Exception:
+			for line in traceback.format_exc().split("\n"):
+				self.log.warn("No factory calibration in VNA?")
+				self.log.warn(line)
+
+			self.tryLoadLocalCal()
+
+	def running(self):
+		return self.vna.getState() == VNA.TASK_STARTED
+
 
 	def dispatch(self, command):
 		assert isinstance(command, tuple), "All commands must be a (command, params) tuple!"
@@ -76,26 +166,22 @@ class VnaThread():
 
 		command, params = command
 
+		self.log.info("Command message: '%s' - params: '%s'", command, params)
 		if command == "connect":
 			if not self.vna_connected:
 				try:
-					self.log.info("Connecting to VNA. Please wait while the VNA's embedded calibration data is downloaded.")
-					self.vna = VNA.VNA(*params, vna_no=self.vna_no)
-					self.vna.set_config(VNA.HOP_45K, VNA.ATTEN_0, freq=[self.start_f, self.stop_f, self.npts_s])
-
+					self.log.info("Connecting to VNA")
+					self.log.info("Please wait while the embedded calibration data is fetched.")
+					self.log.info("This can take up to a minute or two.")
+					self.connection_params = params
+					self.do_connect(self.connection_params)
 					self.response_queue.put(("connect", True))
-					self.log.info("VNA Connected, and embedded calibration retreived.")
 
+					self.log.info("VNA Connected.")
 				except VNA.VNA_Exception:
 					self.log.error("Failure connecting to the hardware!")
 					self.log.error("Please try again, or power-cycle the VNA.")
 					return
-
-
-
-				if self.vna.hasFactoryCalibration():
-					self.log.info("VNA Has embedded calibration data")
-
 
 				self.vna_connected = True
 			else:
@@ -111,9 +197,6 @@ class VnaThread():
 				self.runstate      = False
 
 
-
-
-
 		elif command == "run":
 			if not self.vna and params == True:
 				self.log.error("You have to connect to a VNA first!")
@@ -126,89 +209,141 @@ class VnaThread():
 					self.log.info("Starting VNA task")
 					self.vna.set_config(VNA.HOP_45K, VNA.ATTEN_0, freq=[self.start_f, self.stop_f, self.npts_s])
 					self.vna.start()
-					self.runstate = params
+					self.runstate = True
 				else:
 					if self.vna != None:
 						self.log.info("Stopping VNA task")
 						self.vna.stop()
-						self.runstate = params
-
-		elif command == "calibrate":
-
-			if not self.vna:
-				self.log.error("You have to connect to a VNA first!")
-				return
-			if self.vna.getState() != VNA.TASK_STARTED:
-				self.log.error("You must have started the VNA to perform that operation!")
-				return
-
-			if params == "clear":
-				self.vna.clearCalibration()
-				return
-
-			reverseCalMap = {}
-			for key, value in VNA.CalibrationStepBOOK.items():
-				reverseCalMap[value] = key
-
-			if params not in reverseCalMap:
-				self.log.error("Unknown cal step: '%s'", params)
-				return
-			self.log.info("Measuring cal step value: %s -> %s", params, reverseCalMap[params])
-			stepVal = reverseCalMap[params]
-			self.vna.measureCalibrationStep(stepVal)
-			self.log.info("Cal measured!")
-			if self.vna.isCalibrationComplete():
-				self.log.info("Calibration is complete!")
-			else:
-				self.log.info("Not all calibration steps finished yet!")
-
-		elif command == "cal_data":
-
-			if not self.vna:
-				self.log.error("You have to connect to a VNA first!")
-				return
-			if params == "CAL_CLEAR":
-				self.vna.clearCalibration()
-			elif params == 'CAL_FACTORY':
-				self.vna.importFactoryCalibration()
-			elif params == "CAL_SAVE":
-				if not self.vna.isCalibrationComplete():
-					self.log.error("You need a calibration to save!")
-					return
-				self.vna.save_dll_cal_auto()
-			elif params == "CAL_LOAD":
-				try:
-					self.vna.load_dll_cal_auto()
-				except Exception:
-					self.log.warning("No on-disk calibration for VNA Found.")
-			else:
-				self.log.error("Unknown 'cal_data' verb: '%s'", params)
-
-		elif command == "path":
-
-			if not self.vna:
-				self.log.error("You have to connect to a VNA first!")
-				return
-
-			self.active_paths = []
-			for pathval in params:
-				if not pathval in self.valid_paths:
-					self.log.error("The sample path MUST be one of the set: '%s'. Received: '%s'", self.valid_paths, params)
-					return
-
-				self.active_paths.append(pathval)
-			self.log.info("Actively measured paths: %s", self.active_paths)
+						self.runstate = False
 
 
-		elif command == "stop":
-			runstate.run = False
 		elif command == "halt" and params == True:
 			raise ThreadExit("Exiting VNA process!")
+
 		elif command == "sweep":
 			self.npts_s , self.start_f, self.stop_f = params
+			self.bounds_check()
+			if self.vna and self.running():
+				self.restart_acq()
+
+		elif command == "npts":
+			if params == self.npts_s:
+				self.log.warn("Point number didn't change? Nothing to do")
+				return
+			self.npts_s = params
+			self.bounds_check()
+			if self.vna and self.running():
+				self.restart_acq()
+		elif command == "start-stop":
+			start, stop = params
+			if self.start_f == start and self.stop_f == stop:
+				self.log.warn("Start and stop frequency didn't change? Nothing to do")
+				return
+
+			self.start_f, self.stop_f = start, stop
+			self.bounds_check()
+
+			if self.vna and self.running():
+				self.restart_acq()
+		elif command == "calibrate":
+			self.handle_calibrate(step = params)
+		elif command == "cal_data":
+			self.calibrate_manage(command = params)
 		else:
 			self.log.error("Unknown command: '%s'", command)
 			self.log.error("Command parameters: '%s'", params)
+
+	def bounds_check(self):
+
+		self.vna_fmin = 375
+		self.vna_fmax = 6050
+
+
+		if self.start_f > self.vna_fmax or self.start_f < self.vna_fmin:
+			self.log.error("Start frequency outside hardware supported bounds (%s-%s) - %s. Clamping value", self.vna_fmin, self.vna_fmax, self.start_f)
+			self.start_f = max(self.vna_fmin, min(self.start_f, self.vna_fmax))
+		if self.stop_f > self.vna_fmax or self.stop_f < self.vna_fmin:
+			self.log.error("Stop frequency outside hardware supported bounds (%s-%s) - %s. Clamping value", self.vna_fmin, self.vna_fmax, self.stop_f)
+			self.stop_f = max(self.vna_fmin, min(self.stop_f, self.vna_fmax))
+
+		if self.start_f >= self.stop_f:
+			if self.start_f - 1 < self.vna_fmin:
+				self.stop_f = self.start_f + 1
+			elif self.stop_f + 1 > self.vna_fmax:
+				self.start_f = self.stop_f - 1
+			else:
+				self.start_f = self.stop_f - 1
+
+		if self.npts_s < 1:
+			self.log.error("You must sample at least one point! Clamping value.")
+			self.npts_s = 1
+
+		if self.npts_s > 2048:
+			self.log.error("Maximum supported sample points is 2048! Clamping value.")
+			self.npts_s = 2048
+
+	def calibrate_manage(self, command):
+
+		if command == 'CAL_LOAD':
+			if self.tryLoadLocalCal():
+				self.log.info("Found local CSV calibration! Loading....")
+			else:
+				self.log.info("No local CSV calibration found. Attempting to load a PIK calibration.")
+				self.vna.load_dll_cal_auto()
+
+		elif command == 'CAL_FACTORY':
+			try:
+				self.vna.importFactoryCalibration()
+				self.vna.measure_cal()
+				self.log.info("Factory calibration loaded! Cal complete: %s", self.vna.isCalibrationComplete())
+				return
+			except VNA.VNA_Exception:
+				print(traceback.format_exc())
+				self.log.info("Failed to load factory cal! %s", self.vna.isCalibrationComplete())
+
+		elif command == 'CAL_CLEAR':
+			self.vna.clearCalibration()
+		elif command == 'CAL_SAVE':
+			self.vna.save_dll_cal_auto()
+
+
+		else:
+			raise ValueError("Unknown calibration management command: %s." % command)
+
+	def handle_calibrate(self, step):
+		commands = {
+			'STEP_P1_OPEN'  : VNA.STEP_P1_OPEN,
+			'STEP_P1_SHORT' : VNA.STEP_P1_SHORT,
+			'STEP_P1_LOAD'  : VNA.STEP_P1_LOAD,
+			'STEP_P2_OPEN'  : VNA.STEP_P2_OPEN,
+			'STEP_P2_SHORT' : VNA.STEP_P2_SHORT,
+			'STEP_P2_LOAD'  : VNA.STEP_P2_LOAD,
+			'STEP_THRU'     : VNA.STEP_THRU,
+			}
+
+		if not step in commands:
+			raise VNA.VNA_Exception_Bad_Cal("Invalid calibration step: %s" % step)
+
+		self.vna.measureCalibrationStep(commands[step])
+		self.log.info("Calibration step complete.")
+	def restart_acq(self, check=False):
+		if check:
+			state = self.vna.getState()
+			if state == VNA.TASK_STARTED:
+				return
+
+			elif state == VNA.TASK_UNINITIALIZED or state == VNA.TASK_STOPPED:
+				self.log.info("Restarting task!")
+				self.log.info("Current State: %s", VNA.TaskStateBOOK[state])
+			else:
+				raise ValueError("Unknown state?")
+		else:
+			try:
+				self.vna.stop()
+			except VNA.VNA_Exception_Wrong_State:
+				pass
+		self.vna.set_config(VNA.HOP_45K, VNA.ATTEN_0, freq=[self.start_f, self.stop_f, self.npts_s])
+		self.vna.start()
 
 
 	def get_fft(self, data, points):
@@ -256,21 +391,55 @@ class VnaThread():
 		pts = pts * 1e9
 		return fft_data, pts
 
+
 	def get_data(self):
 
-		if self.vna.isCalibrationComplete():
-			return_values = self.vna.measure_cal()
-		else:
-			return_values = self.vna.measure_uncal()
+		self.restart_acq(check=True)
+
+		# if not self.vna.isCalibrationComplete():
+		# 	try:
+		# 		self.vna.importFactoryCalibration()
+		# 		self.vna.measure_cal()
+		# 		self.log.info("Factory calibration loaded! Cal complete: %s", self.vna.isCalibrationComplete())
+		# 	except VNA.VNA_Exception:
+		# 		print(traceback.format_exc())
+		# 		self.log.info("Failed to load factory cal! %s", self.vna.isCalibrationComplete())
+
+		try:
+			if self.vna.isCalibrationComplete():
+				self.log.info("Doing calibrated measurement!")
+				return_values = self.vna.measure_cal()
+			else:
+				return_values = self.vna.measure_uncal()
+
+		except VNA.vnaexceptions.VNA_Exception_No_Response:
+			self.log.info("VNA Exception No Response. Attempting to restart acquisition.")
+			self.vna.stop()
+			self.log.info("VNA Acquisition halted. Restarting...")
+			time.sleep(0.1)
+			self.vna.set_config(VNA.HOP_45K, VNA.ATTEN_0, freq=[self.start_f, self.stop_f, self.npts_s])
+
+			# Be double plus sure we're stopped.
+			try:
+				self.vna.stop()
+			except VNA.VNA_Exception_Wrong_State:
+				pass
+			time.sleep(0.1)
+			self.vna.start()
+			return
 
 		compensated_data = {}
+
+
 
 		fft_data = {}
 		fft_pts  = []
 		frequencies = self.vna.getFrequencies()
-		# for path in ["S11", "S22", "S12", "S21", "S11 FFT", "S22 FFT", "S12 FFT", "S21 FFT"]:
-		for path in self.active_paths:
-			base = path.split()[0]
+
+		assert frequencies is not None
+
+		for path in ('S11', 'S12', 'S21', 'S22', 'S11-FFT', 'S21-FFT', 'S12-FFT', 'S22-FFT'):
+			base = path.split("-")[0]
 			key, val = get_param_from_ret(base, return_values)
 			if "FFT" in path:
 				fft_data_tmp, fft_pts = self.get_fft(val, frequencies)
@@ -278,63 +447,98 @@ class VnaThread():
 			else:
 				compensated_data[path] = log_mag(val)
 
-		response = {
+		# print([len(compensated_data[path]) for path in compensated_data.keys()])
+		# if not any([len(compensated_data[path]) for path in compensated_data.keys()]):
+
+		if not len(compensated_data):
+			frequencies = []
+
+
+		fft_max = {}
+		for key, arr in fft_data.items():
+			fft_max[key] = np.max(arr)
+
+		data = {
 			'comp_data' : compensated_data,
 			'pts'       : frequencies,
 			'fft_data'  : fft_data,
 			'fft_pts'   : fft_pts,
+			'fft_max'   : fft_max,
 		}
-		self.response_queue.put(("sweep", response))
 
+
+		data['pts'] = list(data['pts'])
+		data['fft_pts'] = list(data['fft_pts'])
+
+
+		# dict_children = [('comp_data', 'pts'), ('fft_data', 'fft_pts')]
+		# for child_d, src_k in dict_children:
+		# 	for key in data[child_d]:
+		# 		data[child_d][key] = list(zip(data[src_k], list(data[child_d][key])))
+
+
+		self.response_queue.put(("sweep data", data))
 
 	def process(self):
-		try:
-			if self.runstate and self.vna:
-				self.get_data()
+		if self.runstate and self.vna:
+			self.get_data()
 
-			if self.command_queue.empty():
-				return False
-			else:
-				while not self.command_queue.empty():
-					command = self.command_queue.get()
-					self.dispatch(command)
-				return True
-		except ThreadExit as e:
-			raise e
-		except Exception as e:
-			self.log.error("VNA Exception?")
-			for line in traceback.format_exc().split("\n"):
-				self.log.error(line)
-			raise e
+		if self.command_queue.empty():
+			return False
+		else:
+			while not self.command_queue.empty():
+				command = self.command_queue.get()
+				self.dispatch(command)
+			return True
 
 	def shutdown(self):
 		if self.vna:
-			self.vna.free_task()
-
-def threadProcess(vna_no, command_queue, response_queue):
-	vnat = VnaThread(vna_no, command_queue, response_queue)
-	try:
-		while runstate.run:
+			print("Stopping current task (if any)")
 			try:
-				if vnat.process() == False:
-					time.sleep(0.1)
+				self.vna.stop()
+			except VNA.VNA_Exception:
+				pass
+			print("Freeing current task")
+			self.vna.deleteTask()
+			print("Task freed")
 
-			except ThreadExit as e:
-				raise e
-			except Exception:
-				print("Exception in vna interface thread!")
-				traceback.print_exc()
-	except ThreadExit:
-		print("Thread halting")
-	vnat.shutdown()
-	print("VNA Interface deallocated.")
+
+	def run(self):
+
+		error_count = 0
+		try:
+			while runstate.run:
+				try:
+					if self.process() == False:
+						error_count = 0
+						time.sleep(0.01)
+				except Exception:
+					self.log.error("Exception in VNA interface thread!")
+					for line in traceback.format_exc().split("\n"):
+						self.log.error(line)
+
+					traceback.print_exc()
+					error_count += 0
+
+
+					# If we can't seem to recover normally, delete and re-create the
+					# VNA interface class.
+					if error_count > 5:
+						self.do_connect(self.connection_params)
+
+
+		except ThreadExit:
+			self.log.info("Thread halting")
+		self.shutdown()
 
 
 def create_thread(vna_no):
 	command_queue  = queue.Queue()
 	response_queue = queue.Queue()
 
-	proc = threading.Thread(target=threadProcess, args=(vna_no, command_queue, response_queue))
+	vnat = VnaThread(vna_no, command_queue, response_queue)
+
+	proc = threading.Thread(target=vnat.run)
 	proc.daemon = True
 	proc.start()
 	return proc, command_queue, response_queue
