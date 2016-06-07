@@ -69,6 +69,7 @@ def find_dll():
 	for location in locations:
 		fq_dll_path = os.path.join(location, dll_name)
 		if os.path.exists(fq_dll_path):
+			print("Found DLL at path %s" % fq_dll_path)
 			return fq_dll_path
 	for fpath in locations:
 		print("	", fpath)
