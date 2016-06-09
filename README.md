@@ -35,3 +35,10 @@ Currently, this demo has been tested on both linux and windows.
 
 Once the dependencies are installed, simply running `python main.py` will start
 the demo.
+
+To use the DLL & API alone, numpy and colorama are required, though the other 
+dependencies can be ignored.
+
+Colorama can be installed through `pip` on windows without issue, though numpy
+can be involved. The package from http://www.lfd.uci.edu/~gohlke/pythonlibs/#numpy
+provides an easy shortcut.

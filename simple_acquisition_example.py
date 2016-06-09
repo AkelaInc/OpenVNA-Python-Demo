@@ -15,7 +15,9 @@ def test_class():
 	DEVICE_IPPort = 1025
 
 	# Connect to the VNA
+	print("Connecting to the remote VNA. This can take a while if the network is slow, or you're running in a VM.")
 	vna = VNA.VNA(DEVICE_IP, DEVICE_IPPort)
+	print("VNA connected and embedded data downloaded.")
 
 	# Communication timeout is 500 milliseconds
 	vna.setTimeout(500)
