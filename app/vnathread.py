@@ -376,7 +376,7 @@ class VnaThread():
 		fft_data = np.fft.ifft(arr)
 
 		# Chop off the negative time component (we don't care about it here)
-		fft_data = fft_data[:output_size/2]
+		fft_data = fft_data[:int(output_size/2)]
 		fft_data = np.absolute(fft_data)
 
 		if self.start_f == self.stop_f:
