@@ -27,9 +27,17 @@ Dependencies:
  - Numpy (the API calls take/return numpy arrays)
  - Colorama (For logging niceness)
 
-NOTE: The Version of PyQtGraph in Pip is (as of 2015-09-03) sufficently out of
+The VNA DLL From https://github.com/AkelaInc/OpenVNA. Any DLL from the 2.x series 
+should work, though the latest version is generally preferable.
+
+The DLL is not bundled in this project, as this python code is 32/64 bit agnostic,
+whereas the DLL is not. You will need to chose the appropriate variant for your
+system python.
+
+NOTE: ~~The Version of PyQtGraph in Pip is (as of 2015-09-03) sufficently out of
 date that is will not work (it doesn't support Qt5). If you build from current
-sources, it works fine.
+sources, it works fine.~~ PyQtGraph has subsequently been updated on PyPi, so it 
+should be useable at this point.
 
 Currently, this demo has been tested on both linux and windows.
 
